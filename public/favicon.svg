@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <!-- Memo sticky-note favicon -->
+  <rect x="8" y="8" width="48" height="48" rx="6" fill="#FFE88C"/>
+  <path d="M40 56H50a0 0 0 0 0 0 0V46L40 56Z" fill="#E8C45A"/>
+  <path d="M40 56L50 46H42a2 2 0 0 0-2 2V56Z" fill="#FFF5C8"/>
+  <rect x="16" y="24" width="28" height="3" rx="1.5" fill="#5A4823" opacity="0.55"/>
+  <rect x="16" y="32" width="28" height="3" rx="1.5" fill="#5A4823" opacity="0.55"/>
+  <rect x="16" y="40" width="20" height="3" rx="1.5" fill="#5A4823" opacity="0.55"/>
+  <circle cx="32" cy="15" r="3.5" fill="#D64848"/>
+</svg>
