@@ -1,3 +1,4 @@
+import { TableKit } from '@tiptap/extension-table'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
 import TaskItem from '@tiptap/extension-task-item'
@@ -8,6 +9,8 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
 import { useEffect, useRef } from 'react'
 import { tryEvaluateBeforeEquals } from '../lib/calc'
+import { tableContentFromClipboard } from '../lib/tablePaste'
+import { toPlainText } from '../lib/export'
 import {
   extractSingleUrl,
   resolveLinkMetadata,
@@ -36,6 +39,7 @@ export interface EditorApi {
   focusFind: (query: string) => void
   getJSON: () => JSONContent
   getText: () => string
+  getCopyText: () => string
 }
 
 function todayLabel() {
@@ -69,6 +73,9 @@ export function MemoEditor({
       }),
       LinkCard,
       ResizableImage,
+      TableKit.configure({
+        table: { resizable: false },
+      }),
       Placeholder.configure({
         placeholder: '메모를 입력하세요…  23*5=  후 스페이스 두 번으로 계산',
       }),
@@ -136,6 +143,15 @@ export function MemoEditor({
         return false
       },
       handlePaste: (_view, event) => {
+        const html = event.clipboardData?.getData('text/html') ?? ''
+        const plain = event.clipboardData?.getData('text/plain') ?? ''
+        const table = tableContentFromClipboard(html, plain)
+        if (table) {
+          event.preventDefault()
+          editor?.chain().focus().insertContent(table).run()
+          return true
+        }
+
         const items = event.clipboardData?.items
         if (items) {
           for (const item of items) {
@@ -200,6 +216,14 @@ export function MemoEditor({
 
   useEffect(() => {
     if (!editor) return
+    const el = editor.view.dom as HTMLElement
+    el.style.fontSize = `${fontSize}px`
+    el.style.color = textColor
+    el.style.caretColor = textColor
+  }, [editor, fontSize, textColor])
+
+  useEffect(() => {
+    if (!editor) return
     const current = JSON.stringify(editor.getJSON())
     const next = JSON.stringify(content)
     if (current !== next) {
@@ -256,6 +280,12 @@ export function MemoEditor({
         }
         if (!text) return
 
+        const table = tableContentFromClipboard(text, text)
+        if (table) {
+          editor.chain().focus('end').insertContent(table).run()
+          return
+        }
+
         const trimmed = text.trim()
         // 단일 URL이면 페이지 제목을 조회한 뒤 카드로 넣습니다.
         if (extractSingleUrl(trimmed)) {
@@ -311,6 +341,7 @@ export function MemoEditor({
       },
       getJSON: () => editor.getJSON(),
       getText: () => editor.getText(),
+      getCopyText: () => toPlainText(editor.getJSON()),
     }
     onReady(api)
   }, [editor, onReady])
@@ -427,6 +458,22 @@ export function MemoEditor({
           border: 2px solid #fff;
           border-radius: 2px 0 4px 0;
           opacity: 0.85;
+        }
+        .memo-editor table {
+          width: 100%;
+          margin: 0.5em 0;
+          border-collapse: collapse;
+          table-layout: fixed;
+        }
+        .memo-editor th,
+        .memo-editor td {
+          padding: 4px 6px;
+          overflow: hidden;
+          font-size: inherit;
+          text-align: left;
+          vertical-align: top;
+          word-break: break-word;
+          border: 1px solid rgba(47, 52, 55, 0.28);
         }
         .memo-editor ul[data-type="taskList"] {
           list-style: none;

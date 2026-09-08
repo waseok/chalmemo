@@ -10,11 +10,14 @@ Windows용 로컬 스티키 메모 앱입니다.
 - URL 붙여넣기 시 글 제목·도메인 카드
 - 이미지·계산식·날짜 삽입, TXT/MD/PDF 내보내기
 - 닫아도 트레이에 남음 (로컬 `%APPDATA%\찰메모`)
+- 새 버전이 GitHub에 올라오면 앱에서 업데이트 알림
 
 ## 설치
 
-[Releases](https://github.com/waseok/chalmemo/releases)에서 `찰메모_…_x64-setup.exe`를 받아 설치하세요.  
+[Releases](https://github.com/waseok/chalmemo/releases)에서 `chalmemo_*_x64-setup.exe`를 받아 설치하세요.  
 Windows WebView2가 필요합니다(Windows 10/11 대부분 기본 포함).
+
+이미 0.1.0을 쓰는 중이면 **이번 0.1.1은 한 번만 직접 설치**하면 됩니다. 그다음 버전부터는 앱이 알려줍니다.
 
 ## 개발
 

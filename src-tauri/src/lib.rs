@@ -1,6 +1,7 @@
 mod capture;
 mod link_metadata;
 mod store;
+mod update;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
@@ -13,7 +14,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, Manager, State, WindowEvent,
 };
-use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 struct AppStore(Mutex<store::AppState>);
@@ -116,6 +117,22 @@ fn activate_main_window(app: &AppHandle) -> Result<(), String> {
         win.show().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+#[tauri::command]
+async fn check_app_update() -> Result<update::UpdateInfo, String> {
+    tauri::async_runtime::spawn_blocking(update::check)
+        .await
+        .map_err(|e| format!("업데이트 확인 작업 실패: {e}"))?
+}
+
+#[tauri::command]
+async fn install_app_update(app: AppHandle, url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || update::download_and_run_installer(&url))
+        .await
+        .map_err(|e| format!("업데이트 설치 작업 실패: {e}"))??;
+    app.exit(0);
     Ok(())
 }
 
@@ -281,6 +298,8 @@ pub fn run() {
             fetch_link_metadata,
             show_main_window,
             register_shortcut,
+            check_app_update,
+            install_app_update,
         ])
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -289,6 +308,15 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // 개발 실행이 시작프로그램에 남으면 재부팅 때 콘솔이 뜹니다.
+            // 설치된 앱만 자동 실행하고, 개발 빌드는 등록을 지웁니다.
+            let autostart = app.autolaunch();
+            if cfg!(debug_assertions) {
+                let _ = autostart.disable();
+            } else if initial.settings.autostart {
+                let _ = autostart.enable();
             }
 
             if let Some(win) = app.get_webview_window("main") {

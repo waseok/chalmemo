@@ -16,6 +16,23 @@ export function toPlainText(doc: JSONContent): string {
       parts.push('\n')
       return
     }
+    if (node.type === 'table') {
+      node.content?.forEach((row) => {
+        const cells = (row.content ?? []).map((cell) => {
+          const bits: string[] = []
+          const walkCell = (n?: JSONContent) => {
+            if (!n) return
+            if (n.type === 'text' && n.text) bits.push(n.text)
+            n.content?.forEach(walkCell)
+          }
+          walkCell(cell)
+          return bits.join('').trim()
+        })
+        parts.push(cells.join('\t'), '\n')
+      })
+      parts.push('\n')
+      return
+    }
     if (node.type === 'image') {
       parts.push('[이미지]')
       return
@@ -86,6 +103,13 @@ export function toMarkdown(doc: JSONContent): string {
                 ? '1. '
                 : '- '
           lines.push(prefix + inline(item.content))
+        })
+        lines.push('')
+        break
+      case 'table':
+        node.content?.forEach((row) => {
+          const cells = (row.content ?? []).map((cell) => inline(cell.content)).join(' | ')
+          lines.push(`| ${cells} |`)
         })
         lines.push('')
         break

@@ -1,4 +1,4 @@
-export type PaperColor = 'yellow' | 'cream' | 'green' | 'dark'
+export type PaperColor = 'yellow' | 'cream' | 'green' | 'lime' | 'dark'
 
 export interface Tab {
   id: string
@@ -51,5 +51,6 @@ export const PAPER_COLORS: Record<PaperColor, { bg: string; text: string; muted:
   yellow: { bg: '#FBF3DB', text: '#2F3437', muted: '#787774', border: 'rgba(0,0,0,0.08)' },
   cream: { bg: '#F7F6F3', text: '#2F3437', muted: '#787774', border: 'rgba(0,0,0,0.08)' },
   green: { bg: '#EDF3EC', text: '#2F3437', muted: '#787774', border: 'rgba(0,0,0,0.08)' },
+  lime: { bg: '#4CAF50', text: '#102412', muted: '#1B4D20', border: 'rgba(0,0,0,0.16)' },
   dark: { bg: '#2F3437', text: '#F7F6F3', muted: '#A0A0A0', border: 'rgba(255,255,255,0.1)' },
 }

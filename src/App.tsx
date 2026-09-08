@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { readImage, readText } from '@tauri-apps/plugin-clipboard-manager'
+import { readImage, readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MemoEditor, type EditorApi } from './components/Editor'
@@ -11,6 +11,7 @@ import { TabBar } from './components/TabBar'
 import { TitleBar } from './components/TitleBar'
 import { exportMd, exportPdf, exportTxt } from './lib/export'
 import { extractSingleUrl, resolveLinkMetadata } from './lib/linkMetadata'
+import { tableContentFromClipboard } from './lib/tablePaste'
 import {
   EMPTY_DOC,
   PAPER_COLORS,
@@ -32,6 +33,14 @@ export default function App() {
   const [showExport, setShowExport] = useState(false)
   const [findQuery, setFindQuery] = useState('')
   const [charCount, setCharCount] = useState(0)
+  const [copied, setCopied] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<{
+    available: boolean
+    latestVersion: string
+    notes: string
+    downloadUrl?: string | null
+  } | null>(null)
+  const [updating, setUpdating] = useState(false)
   const editorApi = useRef<EditorApi | null>(null)
   const saveTimer = useRef<number | null>(null)
   const stateRef = useRef<AppState | null>(null)
@@ -53,14 +62,27 @@ export default function App() {
       const loaded = await invoke<AppState>('load_app_state')
       setState(loaded)
       try {
-        const auto = await isEnabled()
-        if (auto !== loaded.settings.autostart) {
-          // 저장 설정을 Windows 로그인 자동 실행 등록 상태와 동기화합니다.
-          if (loaded.settings.autostart) await enable()
-          else await disable()
+        if (import.meta.env.DEV) {
+          // 개발 실행을 시작프로그램에 넣으면 재부팅 때 터미널이 뜹니다.
+          await disable()
+        } else {
+          const auto = await isEnabled()
+          if (auto !== loaded.settings.autostart) {
+            if (loaded.settings.autostart) await enable()
+            else await disable()
+          }
         }
+        // 설치된 0.1.0은 검사 기능이 없습니다. 이 버전부터 GitHub 새 릴리스를 확인합니다.
+        const info = await invoke<{
+          available: boolean
+          currentVersion: string
+          latestVersion: string
+          notes: string
+          downloadUrl?: string | null
+        }>('check_app_update')
+        if (info.available) setUpdateInfo(info)
       } catch {
-        /* 브라우저 미리보기에서는 무시 */
+        /* 미리보기·오프라인에서는 무시 */
       }
     })()
   }, [])
@@ -85,8 +107,13 @@ export default function App() {
     }
     if (partial.autostart !== undefined) {
       try {
-        if (settings.autostart) await enable()
-        else await disable()
+        if (import.meta.env.DEV) {
+          await disable()
+        } else if (settings.autostart) {
+          await enable()
+        } else {
+          await disable()
+        }
       } catch {
         /* ignore */
       }
@@ -153,10 +180,10 @@ export default function App() {
       try {
         const text = await readText()
         if (text?.trim()) {
-          // HTML 찌꺼기만 있고 이미지가 있으면 이미지 쪽으로
           const looksHtml =
             text.trim().startsWith('<html') || text.trim().startsWith('<!--StartFragment')
-          if (!looksHtml) {
+          const isTable = Boolean(tableContentFromClipboard(text, text))
+          if (!looksHtml || isTable) {
             await insertText(text)
             return
           }
@@ -280,6 +307,22 @@ export default function App() {
     }
   }, [persist])
 
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey || !stateRef.current) return
+      event.preventDefault()
+      const current = stateRef.current.settings.fontSize
+      const next = Math.min(36, Math.max(10, current + (event.deltaY < 0 ? 1 : -1)))
+      if (next === current) return
+      persist({
+        ...stateRef.current,
+        settings: { ...stateRef.current.settings, fontSize: next },
+      })
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [persist])
+
   if (!state || !activeTab) {
     return (
       <div className="boot" style={{ background: '#FBF3DB', color: '#2F3437' }}>
@@ -307,10 +350,51 @@ export default function App() {
         onFind={() => setShowFind(true)}
         onExportMenu={() => setShowExport((v) => !v)}
         onPasteToMemo={() => void handlePasteToMemo()}
+        onCopyAll={() => {
+          const body = editorApi.current?.getCopyText?.() ?? editorApi.current?.getText() ?? ''
+          const text = [activeTab.title, body].filter(Boolean).join('\n\n')
+          void writeText(text).then(() => {
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), 1500)
+          })
+        }}
         onInsertDate={() => editorApi.current?.insertDate()}
         onMinimize={() => void getCurrentWindow().hide()}
         onClose={() => void getCurrentWindow().hide()}
       />
+
+      {updateInfo?.available && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            padding: '6px 10px',
+            borderBottom: `1px solid ${paper.border}`,
+            fontSize: 12,
+          }}
+        >
+          <span style={{ flex: 1 }}>새 버전 {updateInfo.latestVersion}이 있습니다.</span>
+          <button
+            type="button"
+            className="chip"
+            disabled={updating}
+            onClick={() => {
+              if (!updateInfo.downloadUrl) return
+              setUpdating(true)
+              void invoke('install_app_update', { url: updateInfo.downloadUrl }).catch((err) => {
+                console.error(err)
+                setUpdating(false)
+              })
+            }}
+          >
+            {updating ? '받는 중…' : '업데이트'}
+          </button>
+          <button type="button" className="chip" onClick={() => setUpdateInfo(null)}>
+            나중에
+          </button>
+        </div>
+      )}
 
       {showExport && (
         <div
@@ -388,7 +472,7 @@ export default function App() {
           justifyContent: 'space-between',
         }}
       >
-        <span>{charCount}자</span>
+        <span>{copied ? '복사됨' : `${charCount}자`}</span>
         <span>{state.settings.alwaysOnTop ? '항상 위' : '일반'}</span>
       </footer>
 
@@ -404,6 +488,21 @@ export default function App() {
           onRegisterShortcut={(shortcut) => {
             void invoke('register_shortcut', { shortcut })
             void updateSettings({ shortcut })
+          }}
+          onCheckUpdate={async () => {
+            const info = await invoke<{
+              available: boolean
+              currentVersion: string
+              latestVersion: string
+              notes: string
+              downloadUrl?: string | null
+            }>('check_app_update')
+            if (info.available) {
+              setUpdateInfo(info)
+              setShowSettings(false)
+              return `새 버전 ${info.latestVersion}이 있습니다.`
+            }
+            return `이미 최신입니다. (현재 ${info.currentVersion}, GitHub ${info.latestVersion})`
           }}
         />
       )}

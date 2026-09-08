@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "찰메모",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.waseok.chalmemo",
   "build": {
     "frontendDist": "../dist",
@@ -24,7 +24,8 @@
         "alwaysOnTop": true,
         "transparent": false,
         "visible": true,
-        "skipTaskbar": false
+        "skipTaskbar": false,
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {

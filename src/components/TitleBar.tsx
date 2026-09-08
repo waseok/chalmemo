@@ -1,5 +1,6 @@
 import {
   CalendarBlank,
+  ClipboardText,
   Export as ExportIcon,
   GearSix,
   MagnifyingGlass,
@@ -16,6 +17,7 @@ interface TitleBarProps {
   onFind: () => void
   onExportMenu: () => void
   onPasteToMemo: () => void
+  onCopyAll: () => void
   onInsertDate: () => void
   onMinimize: () => void
   onClose: () => void
@@ -31,6 +33,7 @@ export function TitleBar({
   onFind,
   onExportMenu,
   onPasteToMemo,
+  onCopyAll,
   onInsertDate,
   onMinimize,
   onClose,
@@ -71,6 +74,9 @@ export function TitleBar({
         </button>
         <button type="button" style={btn} title="메모에 붙여넣기" onClick={onPasteToMemo}>
           붙여넣기
+        </button>
+        <button type="button" style={btn} title="이 탭 전체 복사" onClick={onCopyAll}>
+          <ClipboardText size={16} weight="bold" />
         </button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>

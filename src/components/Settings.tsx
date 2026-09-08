@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import type { PaperColor, Settings } from '../lib/types'
 
 interface SettingsPanelProps {
@@ -10,12 +10,14 @@ interface SettingsPanelProps {
   onChange: (next: Partial<Settings>) => void
   onClose: () => void
   onRegisterShortcut: (shortcut: string) => void
+  onCheckUpdate: () => Promise<string>
 }
 
 const PAPERS: { id: PaperColor; label: string }[] = [
   { id: 'yellow', label: '노랑' },
   { id: 'cream', label: '미색' },
   { id: 'green', label: '연녹' },
+  { id: 'lime', label: '초록' },
   { id: 'dark', label: '다크' },
 ]
 
@@ -28,7 +30,10 @@ export function SettingsPanel({
   onChange,
   onClose,
   onRegisterShortcut,
+  onCheckUpdate,
 }: SettingsPanelProps) {
+  const [updateMsg, setUpdateMsg] = useState('')
+  const [checking, setChecking] = useState(false)
   return (
     <div
       style={{
@@ -86,8 +91,8 @@ export function SettingsPanel({
         <span>글자 크기 {settings.fontSize}px</span>
         <input
           type="range"
-          min={12}
-          max={22}
+          min={10}
+          max={36}
           step={1}
           value={settings.fontSize}
           onChange={(e) => onChange({ fontSize: Number(e.target.value) })}
@@ -96,7 +101,7 @@ export function SettingsPanel({
 
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 13, marginBottom: 8, color: muted }}>용지 색</div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {PAPERS.map((p) => (
             <button
               key={p.id}
@@ -145,6 +150,27 @@ export function SettingsPanel({
         />
       </label>
 
+      <div style={rowStyle}>
+        <span>업데이트</span>
+        <button
+          type="button"
+          className="chip"
+          disabled={checking}
+          onClick={() => {
+            setChecking(true)
+            setUpdateMsg('')
+            void onCheckUpdate()
+              .then((msg) => setUpdateMsg(msg))
+              .finally(() => setChecking(false))
+          }}
+        >
+          {checking ? '확인 중…' : '지금 확인'}
+        </button>
+      </div>
+      {updateMsg ? (
+        <p style={{ fontSize: 12, color: muted, margin: '-6px 0 14px' }}>{updateMsg}</p>
+      ) : null}
+
       <p style={{ fontSize: 12, color: muted, lineHeight: 1.5, marginTop: 20 }}>
         사용법: 다른 앱에서 텍스트/이미지를 선택한 뒤 전역 단축키({settings.shortcut})를 누르거나,
         복사 후 「붙여넣기」/트레이 「메모에 붙여넣기」를 누르세요.
@@ -152,6 +178,10 @@ export function SettingsPanel({
         날짜는 왼쪽 달력 버튼으로 넣을 수 있습니다.
         <br />
         계산: <code>23*5=</code> 입력 후 스페이스를 두 번 누르면 결과가 붙습니다.
+        <br />
+        개발 모드에서는 Windows 시작 등록을 하지 않습니다. 재부팅 때 터미널이 뜨던 원인입니다.
+        <br />
+        Ctrl+마우스 휠로 글자 크기를 바꿀 수 있습니다.
       </p>
     </div>
   )
