@@ -129,7 +129,8 @@ async fn check_app_update() -> Result<update::UpdateInfo, String> {
 
 #[tauri::command]
 async fn install_app_update(app: AppHandle, url: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || update::download_and_run_installer(&url))
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || update::download_and_run_installer(&handle, &url))
         .await
         .map_err(|e| format!("업데이트 설치 작업 실패: {e}"))??;
     app.exit(0);

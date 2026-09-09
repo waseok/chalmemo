@@ -1,8 +1,9 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { readImage, readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
+import { readImage, readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
+import { openUrl } from '@tauri-apps/plugin-opener'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MemoEditor, type EditorApi } from './components/Editor'
 import { FindBar } from './components/FindBar'
@@ -42,6 +43,7 @@ export default function App() {
     downloadUrl?: string | null
   } | null>(null)
   const [updating, setUpdating] = useState(false)
+  const [updateError, setUpdateError] = useState<string | null>(null)
   const editorApi = useRef<EditorApi | null>(null)
   const saveTimer = useRef<number | null>(null)
   const stateRef = useRef<AppState | null>(null)
@@ -384,7 +386,10 @@ export default function App() {
             fontSize: 12,
           }}
         >
-          <span style={{ flex: 1 }}>새 버전 {updateInfo.latestVersion}이 있습니다.</span>
+          <span style={{ flex: 1 }}>
+            새 버전 {updateInfo.latestVersion}이 있습니다.
+            {updateError ? ` (${updateError})` : ''}
+          </span>
           <button
             type="button"
             className="chip"
@@ -392,14 +397,26 @@ export default function App() {
             onClick={() => {
               if (!updateInfo.downloadUrl) return
               setUpdating(true)
+              setUpdateError(null)
               void invoke('install_app_update', { url: updateInfo.downloadUrl }).catch((err) => {
-                console.error(err)
                 setUpdating(false)
+                setUpdateError(err instanceof Error ? err.message : String(err))
               })
             }}
           >
             {updating ? '받는 중…' : '업데이트'}
           </button>
+          {updateInfo.downloadUrl ? (
+            <button
+              type="button"
+              className="chip"
+              onClick={() => {
+                if (updateInfo.downloadUrl) void openUrl(updateInfo.downloadUrl)
+              }}
+            >
+              브라우저에서 받기
+            </button>
+          ) : null}
           <button type="button" className="chip" onClick={() => setUpdateInfo(null)}>
             나중에
           </button>

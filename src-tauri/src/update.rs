@@ -1,13 +1,17 @@
-use std::fs;
-use std::process::Command;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
 use std::time::Duration;
 
 use reqwest::blocking::Client;
 use reqwest::header::USER_AGENT;
 use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager};
 
 const GITHUB_LATEST: &str = "https://api.github.com/repos/waseok/chalmemo/releases/latest";
-const UA: &str = "찰메모-updater";
+const UA: &str = "chalmemo-updater";
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,17 +60,22 @@ fn version_newer(latest: &str, current: &str) -> bool {
     false
 }
 
-fn http_client() -> Result<Client, String> {
+/// GitHub 자산 다운로드가 HTTP/2에서 멈추는 경우가 있어 HTTP/1.1만 씁니다.
+fn http_client(timeout_secs: u64) -> Result<Client, String> {
     Client::builder()
-        .connect_timeout(Duration::from_secs(8))
-        .timeout(Duration::from_secs(60))
+        .user_agent(UA)
+        .connect_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(timeout_secs))
+        .http1_only()
+        .tcp_nodelay(true)
+        .pool_max_idle_per_host(0)
         .build()
         .map_err(|e| format!("업데이트 확인 준비 실패: {e}"))
 }
 
 pub fn check() -> Result<UpdateInfo, String> {
     let current = normalize_version(env!("CARGO_PKG_VERSION"));
-    let client = http_client()?;
+    let client = http_client(30)?;
     let release: GithubRelease = client
         .get(GITHUB_LATEST)
         .header(USER_AGENT, UA)
@@ -94,24 +103,91 @@ pub fn check() -> Result<UpdateInfo, String> {
     })
 }
 
-pub fn download_and_run_installer(url: &str) -> Result<(), String> {
-    let client = http_client()?;
-    let bytes = client
+fn looks_like_exe(header: &[u8]) -> bool {
+    header.len() >= 2 && header[0] == b'M' && header[1] == b'Z'
+}
+
+fn installer_path() -> PathBuf {
+    std::env::temp_dir().join("chalmemo-setup.exe")
+}
+
+fn download_installer(url: &str, path: &Path) -> Result<(), String> {
+    let client = http_client(180)?;
+    let mut response = client
         .get(url)
         .header(USER_AGENT, UA)
+        .header("Accept", "application/octet-stream")
+        .header("Accept-Encoding", "identity")
         .send()
         .map_err(|e| format!("설치 파일 받기 실패: {e}"))?
         .error_for_status()
-        .map_err(|e| format!("설치 파일 응답 오류: {e}"))?
-        .bytes()
+        .map_err(|e| format!("설치 파일 응답 오류: {e}"))?;
+
+    let mut file = File::create(path).map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
+    let mut first = [0u8; 2];
+    let n = response
+        .read(&mut first)
         .map_err(|e| format!("설치 파일 읽기 실패: {e}"))?;
+    if n == 0 {
+        return Err("설치 파일이 비어 있습니다.".into());
+    }
+    if !looks_like_exe(&first[..n]) {
+        return Err("설치 파일이 실행 파일이 아닙니다. 브라우저에서 받아 주세요.".into());
+    }
+    file.write_all(&first[..n])
+        .map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
 
-    let path = std::env::temp_dir().join("chalmemo-setup.exe");
-    fs::write(&path, &bytes).map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = response
+            .read(&mut buf)
+            .map_err(|e| format!("설치 파일 읽기 실패: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        file.write_all(&buf[..n])
+            .map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
+    }
+    file.flush()
+        .map_err(|e| format!("설치 파일 저장 실패: {e}"))?;
+    Ok(())
+}
 
-    Command::new(&path)
-        .spawn()
-        .map_err(|e| format!("설치 프로그램 실행 실패: {e}"))?;
+fn run_installer(path: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        // 부모(찰메모)가 종료돼도 설치 창이 같이 죽지 않게 분리해서 실행합니다.
+        Command::new("cmd")
+            .arg("/C")
+            .arg(format!("start \"\" \"{}\"", path.display()))
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("설치 프로그램 실행 실패: {e}"))?;
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new(path)
+            .spawn()
+            .map_err(|e| format!("설치 프로그램 실행 실패: {e}"))?;
+        Ok(())
+    }
+}
+
+pub fn download_and_run_installer(app: &AppHandle, url: &str) -> Result<(), String> {
+    let path = installer_path();
+    download_installer(url, &path)?;
+
+    // 항상 위 창이 SmartScreen/설치 창을 가리지 않게 먼저 내립니다.
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_always_on_top(false);
+        let _ = win.hide();
+    }
+
+    run_installer(&path)?;
+    thread::sleep(Duration::from_millis(800));
     Ok(())
 }
 
@@ -126,5 +202,12 @@ mod tests {
         assert!(!version_newer("0.1.0", "0.1.0"));
         assert!(!version_newer("0.1.0", "0.2.0"));
         assert!(version_newer("v1.0.0", "0.9.9"));
+    }
+
+    #[test]
+    fn exe_magic_is_mz() {
+        assert!(looks_like_exe(b"MZ"));
+        assert!(!looks_like_exe(b"<html>"));
+        assert!(!looks_like_exe(b""));
     }
 }
