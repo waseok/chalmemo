@@ -7,7 +7,7 @@ import { EditorContent, useEditor, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { tryEvaluateBeforeEquals } from '../lib/calc'
 import { tableContentFromClipboard } from '../lib/tablePaste'
 import { toPlainText } from '../lib/export'
@@ -24,6 +24,11 @@ interface EditorProps {
   fontSize: number
   textColor: string
   mutedColor: string
+  /** 용지 배경색 — sticky 블록이 아래 내용을 가릴 때 씀 */
+  paperBg: string
+  paperBorder: string
+  /** 위에서부터 고정할 최상위 블록 수 */
+  stickyBlockCount: number
   onChange: (json: Record<string, unknown>) => void
   onReady?: (api: EditorApi) => void
 }
@@ -40,6 +45,8 @@ export interface EditorApi {
   getJSON: () => JSONContent
   getText: () => string
   getCopyText: () => string
+  /** 커서(또는 선택 끝)가 있는 줄까지 고정할 블록 개수를 반환합니다. */
+  stickyCountThroughCursor: () => number
 }
 
 function todayLabel() {
@@ -51,11 +58,15 @@ export function MemoEditor({
   fontSize,
   textColor,
   mutedColor,
+  paperBg,
+  paperBorder,
+  stickyBlockCount,
   onChange,
   onReady,
 }: EditorProps) {
   const composing = useRef(false)
   const spaceStreak = useRef(0)
+  const stickyCountRef = useRef(stickyBlockCount)
 
   const editor = useEditor({
     extensions: [
@@ -214,6 +225,48 @@ export function MemoEditor({
     },
   })
 
+  /** 위에서부터 N개 블록에 position:sticky를 걸어 제목처럼 남깁니다. */
+  const applyStickyBlocks = useCallback(() => {
+    if (!editor) return
+    const root = editor.view.dom
+    const count = Math.max(0, stickyCountRef.current)
+    let offsetTop = 0
+    Array.from(root.children).forEach((child, index) => {
+      const el = child as HTMLElement
+      el.classList.remove('memo-sticky-block', 'memo-sticky-block-last')
+      el.style.top = ''
+      el.style.zIndex = ''
+      if (index < count) {
+        el.classList.add('memo-sticky-block')
+        if (index === count - 1) el.classList.add('memo-sticky-block-last')
+        el.style.top = `${offsetTop}px`
+        el.style.zIndex = String(30 + index)
+        offsetTop += el.offsetHeight
+      }
+    })
+  }, [editor])
+
+  useEffect(() => {
+    stickyCountRef.current = stickyBlockCount
+    applyStickyBlocks()
+  }, [stickyBlockCount, applyStickyBlocks])
+
+  useEffect(() => {
+    if (!editor) return
+    const rerun = () => {
+      requestAnimationFrame(applyStickyBlocks)
+    }
+    editor.on('update', rerun)
+    editor.on('selectionUpdate', rerun)
+    window.addEventListener('resize', rerun)
+    rerun()
+    return () => {
+      editor.off('update', rerun)
+      editor.off('selectionUpdate', rerun)
+      window.removeEventListener('resize', rerun)
+    }
+  }, [editor, applyStickyBlocks])
+
   useEffect(() => {
     if (!editor) return
     const el = editor.view.dom as HTMLElement
@@ -228,8 +281,9 @@ export function MemoEditor({
     const next = JSON.stringify(content)
     if (current !== next) {
       editor.commands.setContent(content as JSONContent, { emitUpdate: false })
+      requestAnimationFrame(applyStickyBlocks)
     }
-  }, [content, editor])
+  }, [content, editor, applyStickyBlocks])
 
   useEffect(() => {
     if (!editor) return
@@ -342,6 +396,13 @@ export function MemoEditor({
       getJSON: () => editor.getJSON(),
       getText: () => editor.getText(),
       getCopyText: () => toPlainText(editor.getJSON()),
+      stickyCountThroughCursor: () => {
+        const { $from } = editor.state.selection
+        // depth 0 = doc, 그 안에서의 최상위 블록 인덱스
+        const index = $from.index(0)
+        const max = editor.state.doc.childCount
+        return Math.min(Math.max(index + 1, 1), max)
+      },
     }
     onReady(api)
   }, [editor, onReady])
@@ -358,6 +419,15 @@ export function MemoEditor({
           word-break: break-word;
         }
         .memo-editor p { margin: 0 0 0.4em; }
+        .memo-editor .memo-sticky-block {
+          position: sticky;
+          background: ${paperBg};
+        }
+        .memo-editor .memo-sticky-block-last {
+          border-bottom: 1px solid ${paperBorder};
+          padding-bottom: 6px;
+          margin-bottom: 6px;
+        }
         .memo-editor a.memo-link,
         .memo-editor a {
           color: #1F6C9F;

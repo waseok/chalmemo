@@ -20,8 +20,9 @@ pub struct Tab {
     pub title: String,
     pub content: Value,
     pub order: u32,
+    /// 스크롤해도 위에 남는 본문 블록 수(위에서부터). 0이면 고정 없음
     #[serde(default)]
-    pub pinned: bool,
+    pub sticky_block_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +89,7 @@ impl Default for AppState {
                 title: "메모 1".into(),
                 content: empty_doc(),
                 order: 0,
-                pinned: false,
+                sticky_block_count: 0,
             }],
             settings: Settings::default(),
             window: WindowState::default(),
