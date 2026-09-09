@@ -51,7 +51,7 @@ jobs:
             0.1.4~0.1.5에서 업데이트가 실패했다면 이번만 아래 설치 파일을 직접 실행해 주세요.
           releaseDraft: false
           prerelease: false
-          includeDebug: false
+          releaseAssetNamePattern: chalmemo_[version]_x64-setup.exe
 
       - name: Upload ASCII installer name
         shell: pwsh
