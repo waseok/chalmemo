@@ -1,4 +1,5 @@
 import {
+  AlignTopSimple,
   CalendarBlank,
   ClipboardText,
   Export as ExportIcon,
@@ -12,7 +13,9 @@ import {
 
 interface TitleBarProps {
   alwaysOnTop: boolean
+  stickyActive: boolean
   onTogglePin: () => void
+  onToggleSticky: () => void
   onOpenSettings: () => void
   onFind: () => void
   onExportMenu: () => void
@@ -28,7 +31,9 @@ interface TitleBarProps {
 
 export function TitleBar({
   alwaysOnTop,
+  stickyActive,
   onTogglePin,
+  onToggleSticky,
   onOpenSettings,
   onFind,
   onExportMenu,
@@ -77,6 +82,18 @@ export function TitleBar({
         </button>
         <button type="button" style={btn} title="이 탭 전체 복사" onClick={onCopyAll}>
           <ClipboardText size={16} weight="bold" />
+        </button>
+        <button
+          type="button"
+          style={{ ...btn, color: stickyActive ? text : muted }}
+          title={
+            stickyActive
+              ? '본문 상단 고정 해제'
+              : '커서 줄까지 스크롤해도 위에 남기기'
+          }
+          onClick={onToggleSticky}
+        >
+          <AlignTopSimple size={16} weight={stickyActive ? 'fill' : 'bold'} />
         </button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>

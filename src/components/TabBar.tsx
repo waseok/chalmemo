@@ -1,5 +1,5 @@
-import { Plus, PushPin, X } from '@phosphor-icons/react'
-import { sortTabs, type Tab } from '../lib/types'
+import { Plus, X } from '@phosphor-icons/react'
+import type { Tab } from '../lib/types'
 
 interface TabBarProps {
   tabs: Tab[]
@@ -8,7 +8,6 @@ interface TabBarProps {
   onAdd: () => void
   onClose: (id: string) => void
   onRename: (id: string, title: string) => void
-  onTogglePin: (id: string) => void
   text: string
   muted: string
   border: string
@@ -21,12 +20,11 @@ export function TabBar({
   onAdd,
   onClose,
   onRename,
-  onTogglePin,
   text,
   muted,
   border,
 }: TabBarProps) {
-  const sorted = sortTabs(tabs)
+  const sorted = [...tabs].sort((a, b) => a.order - b.order)
 
   return (
     <div
@@ -41,7 +39,6 @@ export function TabBar({
     >
       {sorted.map((tab) => {
         const active = tab.id === activeTabId
-        const pinned = Boolean(tab.pinned)
         return (
           <div
             key={tab.id}
@@ -49,7 +46,7 @@ export function TabBar({
               display: 'inline-flex',
               alignItems: 'center',
               gap: 4,
-              padding: pinned ? '4px 6px' : '4px 8px',
+              padding: '4px 8px',
               borderBottom: active ? `2px solid ${text}` : '2px solid transparent',
               color: active ? text : muted,
               fontSize: 12,
@@ -62,26 +59,8 @@ export function TabBar({
               if (next != null && next.trim()) onRename(tab.id, next.trim())
             }}
           >
-            <button
-              type="button"
-              title={pinned ? '탭 고정 해제' : '탭 상단 고정'}
-              onClick={(e) => {
-                e.stopPropagation()
-                onTogglePin(tab.id)
-              }}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: pinned ? text : muted,
-                cursor: 'pointer',
-                padding: 0,
-                display: 'inline-flex',
-              }}
-            >
-              <PushPin size={11} weight={pinned ? 'fill' : 'bold'} />
-            </button>
             <span>{tab.title}</span>
-            {tabs.length > 1 && !pinned && (
+            {tabs.length > 1 && (
               <button
                 type="button"
                 title="탭 닫기"
