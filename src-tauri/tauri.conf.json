@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "찰메모",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "com.waseok.chalmemo",
   "build": {
     "frontendDist": "../dist",
@@ -34,11 +34,6 @@
         "enable": true,
         "scope": ["**"]
       }
-    },
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "tooltip": "찰메모"
     }
   },
   "bundle": {
