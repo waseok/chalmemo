@@ -88,10 +88,20 @@ pub fn check() -> Result<UpdateInfo, String> {
         .map_err(|e| format!("업데이트 정보 파싱 실패: {e}"))?;
 
     let latest = normalize_version(&release.tag_name);
+    // 한글 productName 설치 파일보다 ASCII(chalmemo_*)를 우선합니다.
     let download_url = release
         .assets
         .iter()
-        .find(|a| a.name.to_ascii_lowercase().ends_with("setup.exe"))
+        .find(|a| {
+            let name = a.name.to_ascii_lowercase();
+            name.starts_with("chalmemo") && name.ends_with("setup.exe")
+        })
+        .or_else(|| {
+            release
+                .assets
+                .iter()
+                .find(|a| a.name.to_ascii_lowercase().ends_with("setup.exe"))
+        })
         .map(|a| a.browser_download_url.clone());
 
     Ok(UpdateInfo {
@@ -156,10 +166,15 @@ fn download_installer(url: &str, path: &Path) -> Result<(), String> {
 fn run_installer(path: &Path) -> Result<(), String> {
     #[cfg(windows)]
     {
-        // 부모(찰메모)가 종료돼도 설치 창이 같이 죽지 않게 분리해서 실행합니다.
-        Command::new("cmd")
-            .arg("/C")
-            .arg(format!("start \"\" \"{}\"", path.display()))
+        use std::os::windows::process::CommandExt;
+
+        // cmd /C start "" "경로" 는 Windows에서 따옴표가 깨져 '\\'만 실행하려다 실패합니다.
+        // 설치 파일을 새 프로세스 그룹으로 직접 띄웁니다.
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+
+        Command::new(path)
+            .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
