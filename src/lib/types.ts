@@ -6,6 +6,7 @@ export interface Tab {
   // TipTap JSON 문서
   content: Record<string, unknown>
   order: number
+  pinned?: boolean
 }
 
 export interface Settings {
@@ -51,6 +52,15 @@ export const PAPER_COLORS: Record<PaperColor, { bg: string; text: string; muted:
   yellow: { bg: '#FBF3DB', text: '#2F3437', muted: '#787774', border: 'rgba(0,0,0,0.08)' },
   cream: { bg: '#F7F6F3', text: '#2F3437', muted: '#787774', border: 'rgba(0,0,0,0.08)' },
   green: { bg: '#EDF3EC', text: '#2F3437', muted: '#787774', border: 'rgba(0,0,0,0.08)' },
-  lime: { bg: '#4CAF50', text: '#102412', muted: '#1B4D20', border: 'rgba(0,0,0,0.16)' },
+  lime: { bg: '#1C3328', text: '#F3E8C8', muted: '#A8B89A', border: 'rgba(255,255,255,0.12)' },
   dark: { bg: '#2F3437', text: '#F7F6F3', muted: '#A0A0A0', border: 'rgba(255,255,255,0.1)' },
+}
+
+/** 고정 탭이 왼쪽(앞)에 오도록 정렬합니다. */
+export function sortTabs(tabs: Tab[]): Tab[] {
+  return [...tabs].sort((a, b) => {
+    const pin = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+    if (pin !== 0) return pin
+    return a.order - b.order
+  })
 }

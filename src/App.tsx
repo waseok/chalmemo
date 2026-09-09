@@ -15,6 +15,7 @@ import { tableContentFromClipboard } from './lib/tablePaste'
 import {
   EMPTY_DOC,
   PAPER_COLORS,
+  sortTabs,
   type AppState,
   type PasteRequest,
   type Settings,
@@ -135,15 +136,24 @@ export default function App() {
       title: `메모 ${state.tabs.length + 1}`,
       content: EMPTY_DOC,
       order: state.tabs.length,
+      pinned: false,
     }
     persist({ ...state, tabs: [...state.tabs, tab], activeTabId: tab.id })
   }
 
   const closeTab = (id: string) => {
     if (!state || state.tabs.length <= 1) return
+    const target = state.tabs.find((t) => t.id === id)
+    if (target?.pinned) return
     const tabs = state.tabs.filter((t) => t.id !== id).map((t, i) => ({ ...t, order: i }))
     const activeTabId = state.activeTabId === id ? tabs[0].id : state.activeTabId
     persist({ ...state, tabs, activeTabId })
+  }
+
+  const togglePinTab = (id: string) => {
+    if (!state) return
+    const tabs = state.tabs.map((t) => (t.id === id ? { ...t, pinned: !t.pinned } : t))
+    persist({ ...state, tabs })
   }
 
   const handlePasteToMemo = useCallback(async (_unused?: boolean, payload?: PasteRequest) => {
@@ -257,7 +267,7 @@ export default function App() {
       }
       if (e.ctrlKey && e.key === 'Tab') {
         e.preventDefault()
-        const sorted = [...state.tabs].sort((a, b) => a.order - b.order)
+        const sorted = sortTabs(state.tabs)
         const idx = sorted.findIndex((t) => t.id === state.activeTabId)
         const next = sorted[(idx + 1) % sorted.length]
         persist({ ...state, activeTabId: next.id })
@@ -430,6 +440,7 @@ export default function App() {
         onSelect={(id) => persist({ ...state, activeTabId: id })}
         onAdd={addTab}
         onClose={closeTab}
+        onTogglePin={togglePinTab}
         onRename={(id, title) => {
           const tabs = state.tabs.map((t) => (t.id === id ? { ...t, title } : t))
           persist({ ...state, tabs })

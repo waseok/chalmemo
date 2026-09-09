@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import type { PaperColor, Settings } from '../lib/types'
+import { PAPER_COLORS, type PaperColor, type Settings } from '../lib/types'
 
 interface SettingsPanelProps {
   settings: Settings
@@ -17,7 +17,7 @@ const PAPERS: { id: PaperColor; label: string }[] = [
   { id: 'yellow', label: '노랑' },
   { id: 'cream', label: '미색' },
   { id: 'green', label: '연녹' },
-  { id: 'lime', label: '초록' },
+  { id: 'lime', label: '칠판' },
   { id: 'dark', label: '다크' },
 ]
 
@@ -112,8 +112,8 @@ export function SettingsPanel({
                 padding: '8px 0',
                 borderRadius: 6,
                 border: settings.paperColor === p.id ? `2px solid ${text}` : `1px solid ${border}`,
-                background: 'transparent',
-                color: text,
+                background: PAPER_COLORS[p.id].bg,
+                color: PAPER_COLORS[p.id].text,
                 cursor: 'pointer',
                 fontSize: 12,
               }}

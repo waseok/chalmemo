@@ -5,7 +5,7 @@ import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tip
 import { useCallback, useRef } from 'react'
 
 /** 모서리 드래그로 가로 크기를 조절하는 이미지 노드 뷰 */
-function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps) {
+function ResizableImageView({ node, updateAttributes, selected, deleteNode }: NodeViewProps) {
   const imgRef = useRef<HTMLImageElement>(null)
   const width = (node.attrs.width as number | null) ?? null
 
@@ -34,28 +34,43 @@ function ResizableImageView({ node, updateAttributes, selected }: NodeViewProps)
 
   return (
     <NodeViewWrapper className="memo-img-wrap" data-drag-handle>
-      <span
-        className={`memo-img-box${selected ? ' is-selected' : ''}`}
-        style={{ width: width ? `${width}px` : 'auto', maxWidth: '100%' }}
-      >
-        <img
-          ref={imgRef}
-          src={node.attrs.src as string}
-          alt={(node.attrs.alt as string) || ''}
-          style={{
-            width: width ? '100%' : 'auto',
-            maxWidth: '100%',
-            height: 'auto',
-            display: 'block',
-            borderRadius: 4,
-          }}
-          draggable={false}
-        />
+      <span className="memo-img-row">
         <span
-          className="memo-img-handle"
-          title="드래그해서 크기 조절"
-          onMouseDown={onResizeStart}
-        />
+          className={`memo-img-box${selected ? ' is-selected' : ''}`}
+          style={{ width: width ? `${width}px` : 'auto', maxWidth: '100%' }}
+        >
+          <img
+            ref={imgRef}
+            src={node.attrs.src as string}
+            alt={(node.attrs.alt as string) || ''}
+            style={{
+              width: width ? '100%' : 'auto',
+              maxWidth: '100%',
+              height: 'auto',
+              display: 'block',
+              borderRadius: 4,
+            }}
+            draggable={false}
+          />
+          <span
+            className="memo-img-handle"
+            title="드래그해서 크기 조절"
+            onMouseDown={onResizeStart}
+          />
+        </span>
+        <button
+          type="button"
+          className="memo-img-remove"
+          title="이미지 삭제"
+          aria-label="이미지 삭제"
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            deleteNode()
+          }}
+        >
+          ×
+        </button>
       </span>
     </NodeViewWrapper>
   )

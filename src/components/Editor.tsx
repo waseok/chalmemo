@@ -438,10 +438,16 @@ export function MemoEditor({
           margin: 8px 0;
           line-height: 0;
         }
+        .memo-img-row {
+          display: inline-flex;
+          align-items: flex-start;
+          gap: 2px;
+          max-width: 100%;
+        }
         .memo-img-box {
           position: relative;
           display: inline-block;
-          max-width: 100%;
+          max-width: calc(100% - 1.8em);
         }
         .memo-img-box.is-selected {
           outline: 2px solid #1F6C9F;
@@ -458,6 +464,24 @@ export function MemoEditor({
           border: 2px solid #fff;
           border-radius: 2px 0 4px 0;
           opacity: 0.85;
+        }
+        .memo-img-remove {
+          flex: 0 0 auto;
+          min-width: 1.6em;
+          padding: 0 6px;
+          color: ${mutedColor};
+          font-size: 1.1em;
+          line-height: 1.4;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          cursor: pointer;
+          opacity: 0.55;
+        }
+        .memo-img-remove:hover {
+          color: inherit;
+          background: rgba(0, 0, 0, 0.06);
+          opacity: 1;
         }
         .memo-editor table {
           width: 100%;

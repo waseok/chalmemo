@@ -20,6 +20,8 @@ pub struct Tab {
     pub title: String,
     pub content: Value,
     pub order: u32,
+    #[serde(default)]
+    pub pinned: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +88,7 @@ impl Default for AppState {
                 title: "메모 1".into(),
                 content: empty_doc(),
                 order: 0,
+                pinned: false,
             }],
             settings: Settings::default(),
             window: WindowState::default(),
