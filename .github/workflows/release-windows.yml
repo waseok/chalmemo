@@ -1,0 +1,71 @@
+name: Release Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (예: v0.1.5)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.ref }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: '찰메모 v__VERSION__'
+          releaseBody: |
+            본문 상단 줄 고정이 추가되었습니다.
+
+            - 커서가 있는 줄까지 스크롤해도 위에 남깁니다.
+            - 제목줄 왼쪽 상단 맞춤 아이콘으로 켜고 끌 수 있습니다.
+            - 탭 고정은 본문 고정과 헷갈려서 제거했습니다.
+          releaseDraft: false
+          prerelease: false
+          includeDebug: false
+
+      - name: Upload ASCII installer name
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $src = Get-ChildItem "src-tauri/target/release/bundle/nsis/*setup.exe" |
+            Where-Object { $_.Name -notlike 'chalmemo*' } |
+            Select-Object -First 1
+          if (-not $src) {
+            $src = Get-ChildItem "src-tauri/target/release/bundle/nsis/*setup.exe" | Select-Object -First 1
+          }
+          if (-not $src) { throw 'NSIS installer not found' }
+          $version = $env:TAG.TrimStart('v')
+          $dest = "src-tauri/target/release/bundle/nsis/chalmemo_${version}_x64-setup.exe"
+          Copy-Item $src.FullName $dest -Force
+          gh release upload $env:TAG $dest --clobber
