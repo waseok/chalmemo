@@ -142,6 +142,15 @@ export function SettingsPanel({
       </label>
 
       <label style={rowStyle}>
+        <span>캡처 시 시각 구분선</span>
+        <input
+          type="checkbox"
+          checked={settings.captureTimestamp}
+          onChange={(e) => onChange({ captureTimestamp: e.target.checked })}
+        />
+      </label>
+
+      <label style={rowStyle}>
         <span>Windows 시작 시 실행</span>
         <input
           type="checkbox"
@@ -181,9 +190,13 @@ export function SettingsPanel({
         <br />
         개발 모드에서는 Windows 시작 등록을 하지 않습니다. 재부팅 때 터미널이 뜨던 원인입니다.
         <br />
-        Ctrl+마우스 휠로 글자 크기를 바꿀 수 있습니다.
+        Ctrl+마우스 휠 또는 Ctrl+= / Ctrl+- 로 글자 크기를 바꿀 수 있습니다.
+        <br />
+        탭을 드래그하면 순서를 바꿀 수 있습니다.
         <br />
         제목줄 왼쪽의 상단 맞춤 아이콘을 누르면, 커서 줄까지 스크롤해도 위에 남습니다.
+        <br />
+        관리자 권한 창·복사를 막는 앱에서는 전역 캡처가 실패할 수 있습니다.
       </p>
     </div>
   )

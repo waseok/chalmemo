@@ -167,15 +167,40 @@ export default function App() {
     setStickyBlockCount(count)
   }
 
+  const reorderTabs = (fromId: string, toId: string) => {
+    if (!state || fromId === toId) return
+    const sorted = [...state.tabs].sort((a, b) => a.order - b.order)
+    const fromIdx = sorted.findIndex((t) => t.id === fromId)
+    const toIdx = sorted.findIndex((t) => t.id === toId)
+    if (fromIdx < 0 || toIdx < 0) return
+    const next = [...sorted]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    persist({
+      ...state,
+      tabs: next.map((t, i) => ({ ...t, order: i })),
+    })
+  }
+
+  const nudgeFontSize = (delta: number) => {
+    if (!state) return
+    const next = Math.min(36, Math.max(10, state.settings.fontSize + delta))
+    if (next === state.settings.fontSize) return
+    void updateSettings({ fontSize: next })
+  }
+
   const handlePasteToMemo = useCallback(async (_unused?: boolean, payload?: PasteRequest) => {
     try {
+      const withStamp =
+        payload?.timestamp ?? stateRef.current?.settings.captureTimestamp ?? false
+
       const insertText = async (text: string) => {
         const url = extractSingleUrl(text)
         if (url) {
           const linkCard = await resolveLinkMetadata(url)
-          editorApi.current?.insertCapture({ linkCard })
+          editorApi.current?.insertCapture({ linkCard, timestamp: withStamp })
         } else {
-          editorApi.current?.insertCapture({ text })
+          editorApi.current?.insertCapture({ text, timestamp: withStamp })
         }
       }
 
@@ -193,7 +218,7 @@ export default function App() {
           base64Data: payload.imageBase64,
           ext: 'png',
         })
-        editorApi.current?.insertCapture({ imageSrc: saved.dataUrl })
+        editorApi.current?.insertCapture({ imageSrc: saved.dataUrl, timestamp: withStamp })
         return
       }
 
@@ -228,7 +253,7 @@ export default function App() {
             base64Data: dataUrl,
             ext: 'png',
           })
-          editorApi.current?.insertCapture({ imageSrc: saved.dataUrl })
+          editorApi.current?.insertCapture({ imageSrc: saved.dataUrl, timestamp: withStamp })
         }
       } catch {
         /* 이미지 없음 */
@@ -282,6 +307,15 @@ export default function App() {
         const idx = sorted.findIndex((t) => t.id === state.activeTabId)
         const next = sorted[(idx + 1) % sorted.length]
         persist({ ...state, activeTabId: next.id })
+      }
+      // Ctrl+= / Ctrl+- / Ctrl+숫자패드± 글자 크기
+      if (e.ctrlKey && (e.key === '=' || e.key === '+' || e.code === 'NumpadAdd')) {
+        e.preventDefault()
+        nudgeFontSize(1)
+      }
+      if (e.ctrlKey && (e.key === '-' || e.key === '_' || e.code === 'NumpadSubtract')) {
+        e.preventDefault()
+        nudgeFontSize(-1)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -468,6 +502,7 @@ export default function App() {
         onSelect={(id) => persist({ ...state, activeTabId: id })}
         onAdd={addTab}
         onClose={closeTab}
+        onReorder={reorderTabs}
         onRename={(id, title) => {
           const tabs = state.tabs.map((t) => (t.id === id ? { ...t, title } : t))
           persist({ ...state, tabs })
