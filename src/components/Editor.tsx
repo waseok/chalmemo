@@ -38,6 +38,8 @@ export interface EditorApi {
     text?: string
     imageSrc?: string
     linkCard?: LinkMetadata
+    /** true면 본문 앞에 캡처 구분선(시각)을 넣습니다. */
+    timestamp?: boolean
   }) => void
   insertDate: () => void
   toggleTask: () => void
@@ -51,6 +53,13 @@ export interface EditorApi {
 
 function todayLabel() {
   return new Date().toLocaleDateString('ko-KR')
+}
+
+/** 캡처 구분선: ── 09-05 14:30 */
+function captureDividerLabel() {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `── ${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 export function MemoEditor({
@@ -305,18 +314,28 @@ export function MemoEditor({
   useEffect(() => {
     if (!editor || !onReady) return
     const api: EditorApi = {
-      insertCapture: ({ text, imageSrc, linkCard }) => {
+      insertCapture: ({ text, imageSrc, linkCard, timestamp }) => {
+        const prefixNodes: JSONContent[] = timestamp
+          ? [
+              {
+                type: 'paragraph',
+                content: [{ type: 'text', text: captureDividerLabel() }],
+              },
+            ]
+          : []
+
         const insertLinkCard = (meta: LinkMetadata) => {
           editor
             .chain()
             .focus('end')
-            .insertContent(
-              linkCardWithTrailingParagraph({
+            .insertContent([
+              ...prefixNodes,
+              ...linkCardWithTrailingParagraph({
                 href: meta.url,
                 title: meta.title,
                 domain: meta.domain,
               }),
-            )
+            ])
             .run()
         }
 
@@ -328,7 +347,10 @@ export function MemoEditor({
           editor
             .chain()
             .focus('end')
-            .insertContent({ type: 'image', attrs: { src: imageSrc, width: 280 } })
+            .insertContent([
+              ...prefixNodes,
+              { type: 'image', attrs: { src: imageSrc, width: 280 } },
+            ])
             .run()
           return
         }
@@ -336,7 +358,11 @@ export function MemoEditor({
 
         const table = tableContentFromClipboard(text, text)
         if (table) {
-          editor.chain().focus('end').insertContent(table).run()
+          editor
+            .chain()
+            .focus('end')
+            .insertContent([...prefixNodes, table])
+            .run()
           return
         }
 
@@ -347,7 +373,7 @@ export function MemoEditor({
           return
         }
 
-        const nodes: JSONContent[] = []
+        const nodes: JSONContent[] = [...prefixNodes]
         trimmed.split(/\r?\n/).forEach((line) => {
           const lineUrl = extractSingleUrl(line)
           if (lineUrl) {
