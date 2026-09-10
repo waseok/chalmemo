@@ -147,7 +147,7 @@ export default function App() {
       title: `메모 ${state.tabs.length + 1}`,
       content: EMPTY_DOC,
       order: state.tabs.length,
-      stickyBlockCount: 0,
+      stickyBlockIndex: 0,
     }
     persist({ ...state, tabs: [...state.tabs, tab], activeTabId: tab.id })
   }
@@ -159,12 +159,12 @@ export default function App() {
     persist({ ...state, tabs, activeTabId })
   }
 
-  const setStickyBlockCount = useCallback((count: number) => {
+  const setStickyBlockIndex = useCallback((index: number) => {
     const current = stateRef.current
     if (!current) return
     const tabs = current.tabs.map((tab) =>
       tab.id === current.activeTabId
-        ? { ...tab, stickyBlockCount: Math.max(0, count) }
+        ? { ...tab, stickyBlockIndex: Math.max(0, index) }
         : tab,
     )
     persist({ ...current, tabs })
@@ -497,8 +497,8 @@ export default function App() {
         mutedColor={paper.muted}
         paperBg={paper.bg}
         paperBorder={paper.border}
-        stickyBlockCount={activeTab.stickyBlockCount ?? 0}
-        onStickyChange={setStickyBlockCount}
+        stickyBlockIndex={activeTab.stickyBlockIndex ?? 0}
+        onStickyChange={setStickyBlockIndex}
         onChange={updateTabContent}
         onReady={(api) => {
           editorApi.current = api
@@ -519,7 +519,7 @@ export default function App() {
         <span>
           {copied
             ? '복사됨'
-            : `${charCount}자${(activeTab.stickyBlockCount ?? 0) > 0 ? ` · 상단 ${activeTab.stickyBlockCount}개 문단 고정` : ''}`}
+            : `${charCount}자${(activeTab.stickyBlockIndex ?? 0) > 0 ? ` · ${activeTab.stickyBlockIndex}번째 문단 고정` : ''}`}
         </span>
         <span>{state.settings.alwaysOnTop ? '항상 위' : '일반'}</span>
       </footer>

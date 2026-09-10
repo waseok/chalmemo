@@ -20,9 +20,9 @@ pub struct Tab {
     pub title: String,
     pub content: Value,
     pub order: u32,
-    /// 스크롤해도 위에 남는 본문 블록 수(위에서부터). 0이면 고정 없음
-    #[serde(default)]
-    pub sticky_block_count: u32,
+    /// 스크롤해도 위에 남는 문단의 1부터 시작하는 번호. 0이면 고정 없음
+    #[serde(default, rename = "stickyBlockIndex", alias = "stickyBlockCount")]
+    pub sticky_block_index: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,14 +82,14 @@ impl Default for AppState {
     fn default() -> Self {
         let id = uuid::Uuid::new_v4().to_string();
         Self {
-            version: 2,
+            version: 3,
             active_tab_id: id.clone(),
             tabs: vec![Tab {
                 id,
                 title: "메모 1".into(),
                 content: empty_doc(),
                 order: 0,
-                sticky_block_count: 0,
+                sticky_block_index: 0,
             }],
             settings: Settings::default(),
             window: WindowState::default(),
@@ -130,12 +130,23 @@ pub fn load_state() -> Result<AppState, String> {
 }
 
 fn migrate_state(state: &mut AppState) -> bool {
+    let mut changed = false;
     if state.version < 2 {
-        state.version = 2;
         state.settings.autostart = true;
-        return true;
+        changed = true;
     }
-    false
+    if state.version < 3 {
+        // 0.1.13까지는 첫 문단부터 N개를 고정해 화면을 덮을 수 있었습니다.
+        // 새 단일 문단 방식과 의미가 다르므로 기존 잘못된 범위는 안전하게 해제합니다.
+        for tab in &mut state.tabs {
+            tab.sticky_block_index = 0;
+        }
+        changed = true;
+    }
+    if changed {
+        state.version = 3;
+    }
+    changed
 }
 
 pub fn save_state(state: &AppState) -> Result<(), String> {
@@ -163,7 +174,18 @@ mod tests {
         old.settings.autostart = false;
 
         assert!(migrate_state(&mut old));
-        assert_eq!(old.version, 2);
+        assert_eq!(old.version, 3);
         assert!(old.settings.autostart);
+    }
+
+    #[test]
+    fn legacy_multi_block_sticky_state_is_cleared() {
+        let mut old = AppState::default();
+        old.version = 2;
+        old.tabs[0].sticky_block_index = 9;
+
+        assert!(migrate_state(&mut old));
+        assert_eq!(old.version, 3);
+        assert_eq!(old.tabs[0].sticky_block_index, 0);
     }
 }

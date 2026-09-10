@@ -6,8 +6,8 @@ export interface Tab {
   // TipTap JSON 문서
   content: Record<string, unknown>
   order: number
-  /** 스크롤해도 위에 남는 본문 블록 개수(위에서부터). 0이면 고정 없음 */
-  stickyBlockCount?: number
+  /** 스크롤해도 위에 남는 본문 문단의 1부터 시작하는 번호. 0이면 고정 없음 */
+  stickyBlockIndex?: number
 }
 
 export interface Settings {

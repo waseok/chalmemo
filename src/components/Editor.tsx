@@ -27,9 +27,9 @@ interface EditorProps {
   /** 용지 배경색 — sticky 블록이 아래 내용을 가릴 때 씀 */
   paperBg: string
   paperBorder: string
-  /** 위에서부터 고정할 최상위 블록 수 */
-  stickyBlockCount: number
-  onStickyChange: (count: number) => void
+  /** 고정할 최상위 문단의 1부터 시작하는 번호. 0이면 고정 없음 */
+  stickyBlockIndex: number
+  onStickyChange: (index: number) => void
   onChange: (json: Record<string, unknown>) => void
   onReady?: (api: EditorApi) => void
 }
@@ -51,7 +51,7 @@ export interface EditorApi {
 interface EditorContextMenu {
   x: number
   y: number
-  blockCount: number
+  blockIndex: number
 }
 
 function todayLabel() {
@@ -65,14 +65,14 @@ export function MemoEditor({
   mutedColor,
   paperBg,
   paperBorder,
-  stickyBlockCount,
+  stickyBlockIndex,
   onStickyChange,
   onChange,
   onReady,
 }: EditorProps) {
   const composing = useRef(false)
   const spaceStreak = useRef(0)
-  const stickyCountRef = useRef(stickyBlockCount)
+  const stickyIndexRef = useRef(stickyBlockIndex)
   const onStickyChangeRef = useRef(onStickyChange)
   const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null)
 
@@ -231,7 +231,7 @@ export function MemoEditor({
           if (!position) return false
 
           const resolved = view.state.doc.resolve(position.pos)
-          const blockCount = Math.min(
+          const blockIndex = Math.min(
             Math.max(resolved.index(0) + 1, 1),
             view.state.doc.childCount,
           )
@@ -239,7 +239,7 @@ export function MemoEditor({
           setContextMenu({
             x: Math.min(mouseEvent.clientX, window.innerWidth - 210),
             y: Math.min(mouseEvent.clientY, window.innerHeight - 104),
-            blockCount,
+            blockIndex,
           })
           return true
         },
@@ -256,15 +256,13 @@ export function MemoEditor({
     },
   })
 
-  /** 위에서부터 N개 블록을 고정하되 본문 입력 공간을 항상 절반 이상 남깁니다. */
+  /** 사용자가 지정한 문단 하나만 스크롤 영역 위에 고정합니다. */
   const applyStickyBlocks = useCallback(() => {
     if (!editor) return
     const root = editor.view.dom
     const scrollHost = root.closest('.memo-scroll-host') as HTMLElement | null
-    const count = Math.max(0, stickyCountRef.current)
+    const indexToPin = Math.max(0, stickyIndexRef.current) - 1
     const maxStickyHeight = Math.max(72, (scrollHost?.clientHeight ?? 320) * 0.45)
-    let offsetTop = 0
-    const applied: HTMLElement[] = []
     Array.from(root.children).forEach((child, index) => {
       const el = child as HTMLElement
       el.classList.remove('memo-sticky-block', 'memo-sticky-block-last')
@@ -272,27 +270,23 @@ export function MemoEditor({
       el.style.zIndex = ''
       el.style.maxHeight = ''
       el.style.overflowY = ''
-      if (index < count && offsetTop < maxStickyHeight) {
-        const availableHeight = maxStickyHeight - offsetTop
+      if (index === indexToPin) {
         const blockHeight = el.offsetHeight
-        el.classList.add('memo-sticky-block')
-        el.style.top = `${offsetTop}px`
-        el.style.zIndex = String(30 + index)
-        if (blockHeight > availableHeight) {
-          el.style.maxHeight = `${availableHeight}px`
+        el.classList.add('memo-sticky-block', 'memo-sticky-block-last')
+        el.style.top = '0px'
+        el.style.zIndex = '30'
+        if (blockHeight > maxStickyHeight) {
+          el.style.maxHeight = `${maxStickyHeight}px`
           el.style.overflowY = 'auto'
         }
-        offsetTop += Math.min(blockHeight, availableHeight)
-        applied.push(el)
       }
     })
-    applied.at(-1)?.classList.add('memo-sticky-block-last')
   }, [editor])
 
   useEffect(() => {
-    stickyCountRef.current = stickyBlockCount
+    stickyIndexRef.current = stickyBlockIndex
     applyStickyBlocks()
-  }, [stickyBlockCount, applyStickyBlocks])
+  }, [stickyBlockIndex, applyStickyBlocks])
 
   useEffect(() => {
     if (!editor) return
@@ -475,20 +469,20 @@ export function MemoEditor({
             type="button"
             role="menuitem"
             onClick={() => {
-              stickyCountRef.current = contextMenu.blockCount
-              onStickyChangeRef.current(contextMenu.blockCount)
+              stickyIndexRef.current = contextMenu.blockIndex
+              onStickyChangeRef.current(contextMenu.blockIndex)
               setContextMenu(null)
               requestAnimationFrame(applyStickyBlocks)
             }}
           >
-            현재 문단까지 상단 고정
+            이 문단을 상단 고정
           </button>
-          {stickyBlockCount > 0 ? (
+          {stickyBlockIndex > 0 ? (
             <button
               type="button"
               role="menuitem"
               onClick={() => {
-                stickyCountRef.current = 0
+                stickyIndexRef.current = 0
                 onStickyChangeRef.current(0)
                 setContextMenu(null)
                 requestAnimationFrame(applyStickyBlocks)
