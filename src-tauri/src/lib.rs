@@ -279,6 +279,12 @@ pub fn run() {
     let start_hidden = std::env::args().any(|arg| arg == "--hidden");
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .max_file_size(1_000_000)
+                .build(),
+        )
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(win) = app.get_webview_window("main") {
                 let _ = win.show();
@@ -310,14 +316,6 @@ pub fn run() {
             install_app_update,
         ])
         .setup(move |app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
             // 개발 실행이 시작프로그램에 남으면 재부팅 때 콘솔이 뜹니다.
             // 설치된 앱만 자동 실행하고, 개발 빌드는 등록을 지웁니다.
             let autostart = app.autolaunch();
