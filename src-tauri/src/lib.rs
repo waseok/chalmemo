@@ -114,7 +114,10 @@ fn show_main_window(app: AppHandle) -> Result<(), String> {
 
 fn activate_main_window(app: &AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("main") {
+        // --hidden 자동 시작 뒤 창을 열 때 Windows 작업표시줄 버튼도 확실히 복구합니다.
+        win.set_skip_taskbar(false).map_err(|e| e.to_string())?;
         win.show().map_err(|e| e.to_string())?;
+        win.unminimize().map_err(|e| e.to_string())?;
         win.set_focus().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -180,9 +183,7 @@ fn emit_paste_from_menu(app: &AppHandle) {
         },
     };
     let _ = app.emit("memo-paste-request", payload);
-    if let Some(win) = app.get_webview_window("main") {
-        let _ = win.show();
-    }
+    let _ = activate_main_window(app);
 }
 
 fn schedule_hotkey_capture(app: AppHandle) {
@@ -286,11 +287,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            if let Some(win) = app.get_webview_window("main") {
-                let _ = win.show();
-                let _ = win.unminimize();
-                let _ = win.set_focus();
-            }
+            let _ = activate_main_window(app);
         }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
@@ -332,8 +329,13 @@ pub fn run() {
                     let _ = win.set_position(tauri::LogicalPosition::new(x as f64, y as f64));
                 }
                 let _ = win.set_always_on_top(initial.settings.always_on_top);
+                if let Some(icon) = app.default_window_icon() {
+                    let _ = win.set_icon(icon.clone());
+                }
                 if start_hidden {
                     let _ = win.hide();
+                } else {
+                    let _ = win.set_skip_taskbar(false);
                 }
             }
 
@@ -351,10 +353,7 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "paste" => emit_paste_from_menu(app),
                     "show" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
+                        let _ = activate_main_window(app);
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -367,10 +366,7 @@ pub fn run() {
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            let _ = win.show();
-                            let _ = win.set_focus();
-                        }
+                        let _ = activate_main_window(app);
                     }
                 })
                 .build(app)?;

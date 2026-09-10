@@ -13,6 +13,8 @@ use tauri::{AppHandle, Manager};
 use url::Url;
 
 const GITHUB_LATEST: &str = "https://api.github.com/repos/waseok/chalmemo/releases/latest";
+const RAW_UPDATER_ROOT: &str =
+    "https://raw.githubusercontent.com/waseok/chalmemo/updater";
 const UA: &str = "chalmemo-updater";
 
 #[derive(Debug, Clone, Serialize)]
@@ -35,7 +37,6 @@ struct GithubRelease {
 #[derive(Deserialize)]
 struct GithubAsset {
     name: String,
-    browser_download_url: String,
 }
 
 fn normalize_version(value: &str) -> String {
@@ -75,6 +76,13 @@ fn http_client(timeout_secs: u64) -> Result<Client, String> {
         .map_err(|e| format!("업데이트 확인 준비 실패: {e}"))
 }
 
+fn mirror_download_url(version: &str) -> String {
+    format!(
+        "{RAW_UPDATER_ROOT}/chalmemo_{}_x64-setup.exe",
+        normalize_version(version)
+    )
+}
+
 fn request_error(context: &str, error: reqwest::Error) -> String {
     let mut message = format!("{context}: {error}");
     let mut source = error.source();
@@ -101,7 +109,7 @@ pub fn check() -> Result<UpdateInfo, String> {
 
     let latest = normalize_version(&release.tag_name);
     // 한글 productName 설치 파일보다 ASCII(chalmemo_*)를 우선합니다.
-    let download_url = release
+    let has_windows_installer = release
         .assets
         .iter()
         .find(|a| {
@@ -114,7 +122,11 @@ pub fn check() -> Result<UpdateInfo, String> {
                 .iter()
                 .find(|a| a.name.to_ascii_lowercase().ends_with("setup.exe"))
         })
-        .map(|a| a.browser_download_url.clone());
+        .is_some();
+
+    // 학교·기관 네트워크에서 GitHub release-assets CDN 연결이 끊기는 경우가 있습니다.
+    // 릴리스 워크플로가 같은 설치 파일을 raw.githubusercontent.com에도 게시합니다.
+    let download_url = has_windows_installer.then(|| mirror_download_url(&latest));
 
     Ok(UpdateInfo {
         available: version_newer(&latest, &current) && download_url.is_some(),
@@ -135,10 +147,14 @@ fn installer_path() -> PathBuf {
 
 fn validate_download_url(value: &str) -> Result<(), String> {
     let url = Url::parse(value).map_err(|e| format!("설치 파일 주소 오류: {e}"))?;
+    let path = url.path().to_ascii_lowercase();
+    let trusted_release = url.host_str() == Some("github.com")
+        && path.starts_with("/waseok/chalmemo/releases/download/");
+    let trusted_mirror = url.host_str() == Some("raw.githubusercontent.com")
+        && path.starts_with("/waseok/chalmemo/updater/chalmemo_");
     let trusted = url.scheme() == "https"
-        && url.host_str() == Some("github.com")
-        && url.path().starts_with("/waseok/chalmemo/releases/download/")
-        && url.path().to_ascii_lowercase().ends_with("setup.exe");
+        && (trusted_release || trusted_mirror)
+        && path.ends_with("_x64-setup.exe");
     if trusted {
         Ok(())
     } else {
@@ -208,7 +224,7 @@ fn download_installer_with_windows(url: &str, path: &Path) -> Result<(), String>
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const DOWNLOAD_SCRIPT: &str = r#"& { $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -UseBasicParsing -Uri $args[0] -OutFile $args[1] -TimeoutSec 180 } catch { [Console]::Error.WriteLine($_.Exception.ToString()); exit 1 } }"#;
+    const DOWNLOAD_SCRIPT: &str = r#"& { $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; for($attempt=1; $attempt -le 3; $attempt++){ try { Invoke-WebRequest -UseBasicParsing -Headers @{'User-Agent'='chalmemo-updater'; 'Accept-Encoding'='identity'} -Uri $args[0] -OutFile $args[1] -TimeoutSec 60; exit 0 } catch { if(Test-Path -LiteralPath $args[1]){ Remove-Item -LiteralPath $args[1] -Force -ErrorAction SilentlyContinue }; if($attempt -eq 3){ [Console]::Error.WriteLine(('{0}: {1}' -f $_.Exception.GetType().FullName, $_.Exception.Message)); exit 1 }; Start-Sleep -Seconds (2 * $attempt) } } }"#;
 
     if path.exists() {
         fs::remove_file(path).map_err(|e| format!("이전 설치 파일 정리 실패: {e}"))?;
@@ -292,6 +308,21 @@ pub fn download_and_run_installer(app: &AppHandle, url: &str) -> Result<(), Stri
     let path = installer_path();
     if let Err(error) = download_installer(url, &path) {
         log::error!("updater: installer download failed: {error}");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            if Command::new("explorer.exe")
+                .arg(url)
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn()
+                .is_ok()
+            {
+                return Err(format!(
+                    "{error}\n\n자동 다운로드가 되지 않아 브라우저 다운로드를 열었습니다. 받은 설치 파일을 실행해 주세요."
+                ));
+            }
+        }
         return Err(error);
     }
 
@@ -339,6 +370,14 @@ mod tests {
         assert!(validate_download_url("https://example.com/setup.exe").is_err());
         assert!(validate_download_url(
             "http://github.com/waseok/chalmemo/releases/download/v0.1.8/setup.exe"
+        )
+        .is_err());
+        assert!(validate_download_url(
+            "https://raw.githubusercontent.com/waseok/chalmemo/updater/chalmemo_0.1.10_x64-setup.exe"
+        )
+        .is_ok());
+        assert!(validate_download_url(
+            "https://raw.githubusercontent.com/other/project/updater/chalmemo_0.1.10_x64-setup.exe"
         )
         .is_err());
     }

@@ -43,11 +43,12 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: '찰메모 v__VERSION__'
           releaseBody: |
-            인앱 자동 업데이트 종단 테스트용 릴리스입니다.
+            자동 업데이트와 Windows 작업표시줄 표시를 개선했습니다.
 
-            - 0.1.8의 Windows 시스템 네트워크 다운로드 경로를 실제 업데이트로 검증합니다.
-            - 기능은 0.1.8과 동일합니다.
-          releaseDraft: false
+            - GitHub 릴리스 CDN이 막힌 환경을 위한 전용 업데이터 미러
+            - 다운로드 재시도와 브라우저 다운로드 대체 경로
+            - 자동 시작 후 창을 열 때 작업표시줄 아이콘 복구
+          releaseDraft: true
           prerelease: false
           releaseAssetNamePattern: chalmemo_[version]_x64-setup.exe
 
@@ -68,3 +69,36 @@ jobs:
           $dest = "src-tauri/target/release/bundle/nsis/chalmemo_${version}_x64-setup.exe"
           Copy-Item $src.FullName $dest -Force
           gh release upload $env:TAG $dest --clobber
+
+      - name: Publish updater mirror
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $version = $env:TAG.TrimStart('v')
+          $installer = "src-tauri/target/release/bundle/nsis/chalmemo_${version}_x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer)) { throw 'ASCII installer not found' }
+          $installerPath = (Resolve-Path -LiteralPath $installer).Path
+
+          $mirror = Join-Path $env:RUNNER_TEMP 'chalmemo-updater-mirror'
+          New-Item -ItemType Directory -Path $mirror -Force | Out-Null
+          Push-Location $mirror
+          git init
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout --orphan updater
+          Copy-Item -LiteralPath $installerPath -Destination "chalmemo_${version}_x64-setup.exe"
+          git add .
+          git commit -m "Publish updater installer v$version"
+          gh auth setup-git
+          git remote add origin "https://github.com/$env:GITHUB_REPOSITORY.git"
+          git push --force origin updater
+          Pop-Location
+
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: gh release edit $env:TAG --draft=false
