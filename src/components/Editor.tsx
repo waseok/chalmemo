@@ -7,7 +7,7 @@ import { EditorContent, useEditor, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { tryEvaluateBeforeEquals } from '../lib/calc'
 import { tableContentFromClipboard } from '../lib/tablePaste'
 import { toPlainText } from '../lib/export'
@@ -29,6 +29,7 @@ interface EditorProps {
   paperBorder: string
   /** 위에서부터 고정할 최상위 블록 수 */
   stickyBlockCount: number
+  onStickyChange: (count: number) => void
   onChange: (json: Record<string, unknown>) => void
   onReady?: (api: EditorApi) => void
 }
@@ -45,8 +46,12 @@ export interface EditorApi {
   getJSON: () => JSONContent
   getText: () => string
   getCopyText: () => string
-  /** 커서(또는 선택 끝)가 있는 줄까지 고정할 블록 개수를 반환합니다. */
-  stickyCountThroughCursor: () => number
+}
+
+interface EditorContextMenu {
+  x: number
+  y: number
+  blockCount: number
 }
 
 function todayLabel() {
@@ -61,12 +66,19 @@ export function MemoEditor({
   paperBg,
   paperBorder,
   stickyBlockCount,
+  onStickyChange,
   onChange,
   onReady,
 }: EditorProps) {
   const composing = useRef(false)
   const spaceStreak = useRef(0)
   const stickyCountRef = useRef(stickyBlockCount)
+  const onStickyChangeRef = useRef(onStickyChange)
+  const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null)
+
+  useEffect(() => {
+    onStickyChangeRef.current = onStickyChange
+  }, [onStickyChange])
 
   const editor = useEditor({
     extensions: [
@@ -97,7 +109,6 @@ export function MemoEditor({
     editorProps: {
       attributes: {
         class: 'memo-editor',
-        style: `font-size:${fontSize}px;color:${textColor};caret-color:${textColor}`,
       },
       handleKeyDown: (view, event) => {
         if (composing.current) {
@@ -109,6 +120,23 @@ export function MemoEditor({
           event.preventDefault()
           editor?.chain().focus().toggleTaskList().run()
           return true
+        }
+
+        // 고정된 문단 안에서 Enter로 새 문단을 만들면 새 줄도 고정 범위에 포함합니다.
+        if (event.key === 'Enter' && !event.shiftKey && stickyCountRef.current > 0) {
+          const blockIndex = view.state.selection.$from.index(0)
+          if (blockIndex < stickyCountRef.current) {
+            const previousBlockCount = view.state.doc.childCount
+            const previousStickyCount = stickyCountRef.current
+            requestAnimationFrame(() => {
+              const addedBlocks = view.state.doc.childCount - previousBlockCount
+              if (addedBlocks > 0) {
+                const next = previousStickyCount + addedBlocks
+                stickyCountRef.current = next
+                onStickyChangeRef.current(next)
+              }
+            })
+          }
         }
 
         if (event.key === ';' && (event.ctrlKey || event.metaKey)) {
@@ -213,6 +241,26 @@ export function MemoEditor({
         }
         return false
       },
+      handleDOMEvents: {
+        contextmenu: (view, event) => {
+          const mouseEvent = event as MouseEvent
+          const position = view.posAtCoords({ left: mouseEvent.clientX, top: mouseEvent.clientY })
+          if (!position) return false
+
+          const resolved = view.state.doc.resolve(position.pos)
+          const blockCount = Math.min(
+            Math.max(resolved.index(0) + 1, 1),
+            view.state.doc.childCount,
+          )
+          mouseEvent.preventDefault()
+          setContextMenu({
+            x: Math.min(mouseEvent.clientX, window.innerWidth - 210),
+            y: Math.min(mouseEvent.clientY, window.innerHeight - 104),
+            blockCount,
+          })
+          return true
+        },
+      },
     },
     onUpdate: ({ editor: ed }) => {
       // 문서가 링크 카드로 끝나면 빈 문단을 붙여 아래에 입력할 수 있게 합니다.
@@ -269,14 +317,6 @@ export function MemoEditor({
 
   useEffect(() => {
     if (!editor) return
-    const el = editor.view.dom as HTMLElement
-    el.style.fontSize = `${fontSize}px`
-    el.style.color = textColor
-    el.style.caretColor = textColor
-  }, [editor, fontSize, textColor])
-
-  useEffect(() => {
-    if (!editor) return
     const current = JSON.stringify(editor.getJSON())
     const next = JSON.stringify(content)
     if (current !== next) {
@@ -301,6 +341,22 @@ export function MemoEditor({
       el.removeEventListener('compositionend', onEnd)
     }
   }, [editor])
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') close()
+    }
+    window.addEventListener('pointerdown', close)
+    window.addEventListener('blur', close)
+    window.addEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('pointerdown', close)
+      window.removeEventListener('blur', close)
+      window.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [contextMenu])
 
   useEffect(() => {
     if (!editor || !onReady) return
@@ -396,26 +452,66 @@ export function MemoEditor({
       getJSON: () => editor.getJSON(),
       getText: () => editor.getText(),
       getCopyText: () => toPlainText(editor.getJSON()),
-      stickyCountThroughCursor: () => {
-        const { $from } = editor.state.selection
-        // depth 0 = doc, 그 안에서의 최상위 블록 인덱스
-        const index = $from.index(0)
-        const max = editor.state.doc.childCount
-        return Math.min(Math.max(index + 1, 1), max)
-      },
     }
     onReady(api)
   }, [editor, onReady])
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '10px 14px 20px' }}>
+    <div
+      style={{ flex: 1, overflow: 'auto', padding: '10px 14px 20px' }}
+      onScroll={() => setContextMenu(null)}
+    >
       <EditorContent editor={editor} />
+      {contextMenu ? (
+        <div
+          className="memo-context-menu"
+          role="menu"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+            color: textColor,
+            background: paperBg,
+            borderColor: paperBorder,
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              stickyCountRef.current = contextMenu.blockCount
+              onStickyChangeRef.current(contextMenu.blockCount)
+              setContextMenu(null)
+              requestAnimationFrame(applyStickyBlocks)
+            }}
+          >
+            현재 문단까지 상단 고정
+          </button>
+          {stickyBlockCount > 0 ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                stickyCountRef.current = 0
+                onStickyChangeRef.current(0)
+                setContextMenu(null)
+                requestAnimationFrame(applyStickyBlocks)
+              }}
+            >
+              상단 고정 해제
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       <style>{`
         .memo-editor {
           outline: none;
           min-height: 100%;
+          color: ${textColor};
+          font-size: ${fontSize}px;
           line-height: 1.55;
           font-family: "Segoe UI Variable", "Malgun Gothic", sans-serif;
+          caret-color: ${textColor};
           word-break: break-word;
         }
         .memo-editor p { margin: 0 0 0.4em; }
@@ -427,6 +523,31 @@ export function MemoEditor({
           border-bottom: 1px solid ${paperBorder};
           padding-bottom: 6px;
           margin-bottom: 6px;
+        }
+        .memo-context-menu {
+          position: fixed;
+          z-index: 100;
+          display: grid;
+          min-width: 190px;
+          padding: 5px;
+          border: 1px solid;
+          border-radius: 8px;
+          box-shadow: 0 10px 28px rgba(47, 52, 55, 0.2);
+        }
+        .memo-context-menu button {
+          padding: 8px 10px;
+          color: inherit;
+          font: inherit;
+          text-align: left;
+          background: transparent;
+          border: 0;
+          border-radius: 5px;
+          cursor: pointer;
+        }
+        .memo-context-menu button:hover,
+        .memo-context-menu button:focus-visible {
+          background: rgba(127, 127, 127, 0.14);
+          outline: none;
         }
         .memo-editor a.memo-link,
         .memo-editor a {

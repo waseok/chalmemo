@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
 import { listen } from '@tauri-apps/api/event'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
@@ -35,6 +36,7 @@ export default function App() {
   const [findQuery, setFindQuery] = useState('')
   const [charCount, setCharCount] = useState(0)
   const [copied, setCopied] = useState(false)
+  const [appVersion, setAppVersion] = useState('')
   const [updateInfo, setUpdateInfo] = useState<{
     available: boolean
     latestVersion: string
@@ -48,10 +50,15 @@ export default function App() {
   const stateRef = useRef<AppState | null>(null)
 
   useEffect(() => {
+    void getVersion().then(setAppVersion).catch(() => setAppVersion('개발 빌드'))
+  }, [])
+
+  useEffect(() => {
     stateRef.current = state
   }, [state])
 
   const persist = useCallback((next: AppState) => {
+    stateRef.current = next
     setState(next)
     if (saveTimer.current) window.clearTimeout(saveTimer.current)
     saveTimer.current = window.setTimeout(() => {
@@ -122,13 +129,16 @@ export default function App() {
     }
   }
 
-  const updateTabContent = (content: Record<string, unknown>) => {
-    if (!state || !activeTab) return
-    const tabs = state.tabs.map((t) => (t.id === activeTab.id ? { ...t, content } : t))
-    persist({ ...state, tabs })
+  const updateTabContent = useCallback((content: Record<string, unknown>) => {
+    const current = stateRef.current
+    if (!current) return
+    const tabs = current.tabs.map((tab) =>
+      tab.id === current.activeTabId ? { ...tab, content } : tab,
+    )
+    persist({ ...current, tabs })
     const text = editorApi.current?.getText() ?? ''
     setCharCount(text.replace(/\s/g, '').length)
-  }
+  }, [persist])
 
   const addTab = () => {
     if (!state) return
@@ -149,23 +159,16 @@ export default function App() {
     persist({ ...state, tabs, activeTabId })
   }
 
-  const setStickyBlockCount = (count: number) => {
-    if (!state || !activeTab) return
-    const tabs = state.tabs.map((t) =>
-      t.id === activeTab.id ? { ...t, stickyBlockCount: Math.max(0, count) } : t,
+  const setStickyBlockCount = useCallback((count: number) => {
+    const current = stateRef.current
+    if (!current) return
+    const tabs = current.tabs.map((tab) =>
+      tab.id === current.activeTabId
+        ? { ...tab, stickyBlockCount: Math.max(0, count) }
+        : tab,
     )
-    persist({ ...state, tabs })
-  }
-
-  const toggleStickyHeader = () => {
-    if (!state || !activeTab) return
-    if ((activeTab.stickyBlockCount ?? 0) > 0) {
-      setStickyBlockCount(0)
-      return
-    }
-    const count = editorApi.current?.stickyCountThroughCursor() ?? 1
-    setStickyBlockCount(count)
-  }
+    persist({ ...current, tabs })
+  }, [persist])
 
   const handlePasteToMemo = useCallback(async (_unused?: boolean, payload?: PasteRequest) => {
     try {
@@ -363,12 +366,10 @@ export default function App() {
     >
       <TitleBar
         alwaysOnTop={state.settings.alwaysOnTop}
-        stickyActive={(activeTab.stickyBlockCount ?? 0) > 0}
         muted={paper.muted}
         text={paper.text}
         border={paper.border}
         onTogglePin={() => void updateSettings({ alwaysOnTop: !state.settings.alwaysOnTop })}
-        onToggleSticky={toggleStickyHeader}
         onOpenSettings={() => setShowSettings(true)}
         onFind={() => setShowFind(true)}
         onExportMenu={() => setShowExport((v) => !v)}
@@ -383,6 +384,7 @@ export default function App() {
         }}
         onInsertDate={() => editorApi.current?.insertDate()}
         onMinimize={() => void getCurrentWindow().hide()}
+        onToggleMaximize={() => void getCurrentWindow().toggleMaximize()}
         onClose={() => void getCurrentWindow().hide()}
       />
 
@@ -496,6 +498,7 @@ export default function App() {
         paperBg={paper.bg}
         paperBorder={paper.border}
         stickyBlockCount={activeTab.stickyBlockCount ?? 0}
+        onStickyChange={setStickyBlockCount}
         onChange={updateTabContent}
         onReady={(api) => {
           editorApi.current = api
@@ -523,6 +526,7 @@ export default function App() {
 
       {showSettings && (
         <SettingsPanel
+          appVersion={appVersion}
           settings={state.settings}
           text={paper.text}
           muted={paper.muted}

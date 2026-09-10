@@ -1,7 +1,7 @@
 import {
-  AlignTopSimple,
   CalendarBlank,
   ClipboardText,
+  CornersOut,
   Export as ExportIcon,
   GearSix,
   MagnifyingGlass,
@@ -13,9 +13,7 @@ import {
 
 interface TitleBarProps {
   alwaysOnTop: boolean
-  stickyActive: boolean
   onTogglePin: () => void
-  onToggleSticky: () => void
   onOpenSettings: () => void
   onFind: () => void
   onExportMenu: () => void
@@ -23,6 +21,7 @@ interface TitleBarProps {
   onCopyAll: () => void
   onInsertDate: () => void
   onMinimize: () => void
+  onToggleMaximize: () => void
   onClose: () => void
   muted: string
   text: string
@@ -31,9 +30,7 @@ interface TitleBarProps {
 
 export function TitleBar({
   alwaysOnTop,
-  stickyActive,
   onTogglePin,
-  onToggleSticky,
   onOpenSettings,
   onFind,
   onExportMenu,
@@ -41,6 +38,7 @@ export function TitleBar({
   onCopyAll,
   onInsertDate,
   onMinimize,
+  onToggleMaximize,
   onClose,
   muted,
   text,
@@ -83,18 +81,6 @@ export function TitleBar({
         <button type="button" style={btn} title="이 탭 전체 복사" onClick={onCopyAll}>
           <ClipboardText size={16} weight="bold" />
         </button>
-        <button
-          type="button"
-          style={{ ...btn, color: stickyActive ? text : muted }}
-          title={
-            stickyActive
-              ? '본문 상단 고정 해제'
-              : '커서 줄까지 스크롤해도 위에 남기기'
-          }
-          onClick={onToggleSticky}
-        >
-          <AlignTopSimple size={16} weight={stickyActive ? 'fill' : 'bold'} />
-        </button>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <button type="button" style={btn} title="찾기" onClick={onFind}>
@@ -116,6 +102,9 @@ export function TitleBar({
         </button>
         <button type="button" style={btn} title="트레이로 숨기기" onClick={onMinimize}>
           <Minus size={16} weight="bold" />
+        </button>
+        <button type="button" style={btn} title="최대화 / 이전 크기" onClick={onToggleMaximize}>
+          <CornersOut size={15} weight="bold" />
         </button>
         <button type="button" style={btn} title="닫기" onClick={onClose}>
           <X size={16} weight="bold" />

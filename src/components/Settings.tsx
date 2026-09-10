@@ -2,6 +2,7 @@ import { useState, type CSSProperties } from 'react'
 import { PAPER_COLORS, type PaperColor, type Settings } from '../lib/types'
 
 interface SettingsPanelProps {
+  appVersion: string
   settings: Settings
   text: string
   muted: string
@@ -22,6 +23,7 @@ const PAPERS: { id: PaperColor; label: string }[] = [
 ]
 
 export function SettingsPanel({
+  appVersion,
   settings,
   text,
   muted,
@@ -151,6 +153,13 @@ export function SettingsPanel({
       </label>
 
       <div style={rowStyle}>
+        <span>버전</span>
+        <span style={{ color: muted, fontVariantNumeric: 'tabular-nums' }}>
+          {appVersion ? `v${appVersion}` : '확인 중…'}
+        </span>
+      </div>
+
+      <div style={rowStyle}>
         <span>업데이트</span>
         <button
           type="button"
@@ -183,7 +192,7 @@ export function SettingsPanel({
         <br />
         Ctrl+마우스 휠로 글자 크기를 바꿀 수 있습니다.
         <br />
-        제목줄 왼쪽의 상단 맞춤 아이콘을 누르면, 커서 줄까지 스크롤해도 위에 남습니다.
+        본문을 마우스 오른쪽 버튼으로 눌러 현재 문단까지 상단에 고정하거나 해제할 수 있습니다.
       </p>
     </div>
   )
