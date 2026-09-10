@@ -178,7 +178,7 @@ fn validate_installer(path: &Path) -> Result<(), String> {
 }
 
 fn download_installer_with_reqwest(url: &str, path: &Path) -> Result<(), String> {
-    let client = http_client(180)?;
+    let client = http_client(90)?;
     let mut response = client
         .get(url)
         .header(USER_AGENT, UA)
@@ -220,11 +220,54 @@ fn download_installer_with_reqwest(url: &str, path: &Path) -> Result<(), String>
 }
 
 #[cfg(windows)]
+fn download_installer_with_curl(url: &str, path: &Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    if path.exists() {
+        fs::remove_file(path).map_err(|e| format!("이전 설치 파일 정리 실패: {e}"))?;
+    }
+
+    // Windows 10/11 기본 curl은 이 PC의 기관 TLS 프록시에서 PowerShell보다 안정적입니다.
+    let output = Command::new("curl.exe")
+        .args([
+            "-4",
+            "--http1.1",
+            "--fail",
+            "--location",
+            "--connect-timeout",
+            "15",
+            "--max-time",
+            "90",
+            "--retry",
+            "2",
+            "--retry-delay",
+            "2",
+            "--retry-all-errors",
+            "--silent",
+            "--show-error",
+            "--output",
+        ])
+        .arg(path)
+        .arg(url)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("Windows curl 실행 실패: {e}"))?;
+
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Windows curl 다운로드 실패: {}", detail.trim()));
+    }
+    validate_installer(path)
+}
+
+#[cfg(windows)]
 fn download_installer_with_windows(url: &str, path: &Path) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    const DOWNLOAD_SCRIPT: &str = r#"& { $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; for($attempt=1; $attempt -le 3; $attempt++){ try { Invoke-WebRequest -UseBasicParsing -Headers @{'User-Agent'='chalmemo-updater'; 'Accept-Encoding'='identity'} -Uri $args[0] -OutFile $args[1] -TimeoutSec 60; exit 0 } catch { if(Test-Path -LiteralPath $args[1]){ Remove-Item -LiteralPath $args[1] -Force -ErrorAction SilentlyContinue }; if($attempt -eq 3){ [Console]::Error.WriteLine(('{0}: {1}' -f $_.Exception.GetType().FullName, $_.Exception.Message)); exit 1 }; Start-Sleep -Seconds (2 * $attempt) } } }"#;
+    const DOWNLOAD_SCRIPT: &str = r#"& { $ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; [Console]::OutputEncoding=[Text.UTF8Encoding]::new(); [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { Invoke-WebRequest -UseBasicParsing -Headers @{'User-Agent'='chalmemo-updater'; 'Accept-Encoding'='identity'} -Uri $args[0] -OutFile $args[1] -TimeoutSec 60; exit 0 } catch { if(Test-Path -LiteralPath $args[1]){ Remove-Item -LiteralPath $args[1] -Force -ErrorAction SilentlyContinue }; [Console]::Error.WriteLine(('{0}: {1}' -f $_.Exception.GetType().FullName, $_.Exception.Message)); exit 1 } }"#;
 
     if path.exists() {
         fs::remove_file(path).map_err(|e| format!("이전 설치 파일 정리 실패: {e}"))?;
@@ -257,6 +300,16 @@ fn download_installer(url: &str, path: &Path) -> Result<(), String> {
 
     #[cfg(windows)]
     {
+        let curl_error = match download_installer_with_curl(url, path) {
+            Ok(()) => {
+                log::info!("updater: installer downloaded through Windows curl");
+                return Ok(());
+            }
+            Err(error) => {
+                log::warn!("updater: Windows curl failed, trying PowerShell: {error}");
+                error
+            }
+        };
         match download_installer_with_windows(url, path) {
             Ok(()) => {
                 log::info!("updater: installer downloaded through Windows network stack");
@@ -265,7 +318,9 @@ fn download_installer(url: &str, path: &Path) -> Result<(), String> {
             Err(windows_error) => {
                 log::warn!("updater: Windows download failed, trying reqwest: {windows_error}");
                 return download_installer_with_reqwest(url, path).map_err(|fallback_error| {
-                    format!("{windows_error} / 대체 다운로드 실패: {fallback_error}")
+                    format!(
+                        "{curl_error} / PowerShell 다운로드 실패: {windows_error} / 대체 다운로드 실패: {fallback_error}"
+                    )
                 });
             }
         }

@@ -46,7 +46,7 @@ jobs:
             자동 업데이트와 Windows 작업표시줄 표시를 개선했습니다.
 
             - GitHub 릴리스 CDN이 막힌 환경을 위한 전용 업데이터 미러
-            - 다운로드 재시도와 브라우저 다운로드 대체 경로
+            - Windows curl 우선 다운로드와 브라우저 다운로드 대체 경로
             - 자동 시작 후 창을 열 때 작업표시줄 아이콘 복구
           releaseDraft: true
           prerelease: false
