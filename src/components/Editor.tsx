@@ -425,6 +425,12 @@ export function MemoEditor({
     onReady(api)
   }, [editor, onReady])
 
+  const clearPinnedParagraph = () => {
+    stickyIndexRef.current = 0
+    setPinnedPreview(null)
+    onStickyChangeRef.current(0)
+  }
+
   return (
     <div
       className="memo-editor-shell"
@@ -436,6 +442,12 @@ export function MemoEditor({
           aria-label="상단 고정 문단"
           style={{ color: textColor, background: paperBg, borderColor: paperBorder }}
         >
+          <div className="memo-pinned-toolbar">
+            <span>고정 문단</span>
+            <button type="button" onClick={clearPinnedParagraph}>
+              고정 취소
+            </button>
+          </div>
           <div
             className="memo-editor memo-pinned-preview"
             onClick={(event) => event.preventDefault()}
@@ -480,10 +492,8 @@ export function MemoEditor({
               type="button"
               role="menuitem"
               onClick={() => {
-                stickyIndexRef.current = 0
-                onStickyChangeRef.current(0)
+                clearPinnedParagraph()
                 setContextMenu(null)
-                requestAnimationFrame(syncPinnedPreview)
               }}
             >
               상단 고정 해제
@@ -505,14 +515,42 @@ export function MemoEditor({
         .memo-editor p { margin: 0 0 0.4em; }
         .memo-pinned-header {
           flex: 0 1 45%;
+          display: flex;
+          flex-direction: column;
           max-height: 45%;
-          padding: 8px 14px 6px;
-          overflow: auto;
+          padding: 6px 14px;
+          overflow: hidden;
           border-bottom: 1px solid ${paperBorder};
           box-shadow: 0 3px 8px rgba(47, 52, 55, 0.08);
         }
+        .memo-pinned-toolbar {
+          display: flex;
+          flex: 0 0 auto;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 4px;
+          color: ${mutedColor};
+          font-size: 11px;
+        }
+        .memo-pinned-toolbar button {
+          padding: 2px 7px;
+          color: inherit;
+          font: inherit;
+          background: transparent;
+          border: 1px solid ${paperBorder};
+          border-radius: 5px;
+          cursor: pointer;
+        }
+        .memo-pinned-toolbar button:hover,
+        .memo-pinned-toolbar button:focus-visible {
+          color: ${textColor};
+          background: rgba(127, 127, 127, 0.12);
+          outline: none;
+        }
         .memo-pinned-preview {
+          flex: 1 1 auto;
           min-height: 0;
+          overflow: auto;
         }
         .memo-pinned-preview > :first-child {
           margin-top: 0;
