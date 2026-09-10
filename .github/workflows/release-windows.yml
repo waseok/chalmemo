@@ -43,13 +43,10 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: '찰메모 v__VERSION__'
           releaseBody: |
-            기관 네트워크에서 인앱 업데이트가 실패하는 문제를 고쳤습니다.
+            인앱 자동 업데이트 종단 테스트용 릴리스입니다.
 
-            - Windows 시스템 프록시와 인증서를 사용하는 다운로드 경로를 우선 적용합니다.
-            - 실패 시 기존 다운로드 방식으로 한 번 더 시도합니다.
-            - 업데이트 과정을 앱 로그 파일에 기록하고 오류 원인을 자세히 표시합니다.
-
-            0.1.7에서 인앱 다운로드가 실패한다면 이번만 아래 설치 파일을 브라우저로 직접 받아 주세요.
+            - 0.1.8의 Windows 시스템 네트워크 다운로드 경로를 실제 업데이트로 검증합니다.
+            - 기능은 0.1.8과 동일합니다.
           releaseDraft: false
           prerelease: false
           releaseAssetNamePattern: chalmemo_[version]_x64-setup.exe
