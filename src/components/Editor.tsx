@@ -122,23 +122,6 @@ export function MemoEditor({
           return true
         }
 
-        // 고정된 문단 안에서 Enter로 새 문단을 만들면 새 줄도 고정 범위에 포함합니다.
-        if (event.key === 'Enter' && !event.shiftKey && stickyCountRef.current > 0) {
-          const blockIndex = view.state.selection.$from.index(0)
-          if (blockIndex < stickyCountRef.current) {
-            const previousBlockCount = view.state.doc.childCount
-            const previousStickyCount = stickyCountRef.current
-            requestAnimationFrame(() => {
-              const addedBlocks = view.state.doc.childCount - previousBlockCount
-              if (addedBlocks > 0) {
-                const next = previousStickyCount + addedBlocks
-                stickyCountRef.current = next
-                onStickyChangeRef.current(next)
-              }
-            })
-          }
-        }
-
         if (event.key === ';' && (event.ctrlKey || event.metaKey)) {
           event.preventDefault()
           editor?.chain().focus().insertContent(todayLabel()).run()
@@ -273,25 +256,37 @@ export function MemoEditor({
     },
   })
 
-  /** 위에서부터 N개 블록에 position:sticky를 걸어 제목처럼 남깁니다. */
+  /** 위에서부터 N개 블록을 고정하되 본문 입력 공간을 항상 절반 이상 남깁니다. */
   const applyStickyBlocks = useCallback(() => {
     if (!editor) return
     const root = editor.view.dom
+    const scrollHost = root.closest('.memo-scroll-host') as HTMLElement | null
     const count = Math.max(0, stickyCountRef.current)
+    const maxStickyHeight = Math.max(72, (scrollHost?.clientHeight ?? 320) * 0.45)
     let offsetTop = 0
+    const applied: HTMLElement[] = []
     Array.from(root.children).forEach((child, index) => {
       const el = child as HTMLElement
       el.classList.remove('memo-sticky-block', 'memo-sticky-block-last')
       el.style.top = ''
       el.style.zIndex = ''
-      if (index < count) {
+      el.style.maxHeight = ''
+      el.style.overflowY = ''
+      if (index < count && offsetTop < maxStickyHeight) {
+        const availableHeight = maxStickyHeight - offsetTop
+        const blockHeight = el.offsetHeight
         el.classList.add('memo-sticky-block')
-        if (index === count - 1) el.classList.add('memo-sticky-block-last')
         el.style.top = `${offsetTop}px`
         el.style.zIndex = String(30 + index)
-        offsetTop += el.offsetHeight
+        if (blockHeight > availableHeight) {
+          el.style.maxHeight = `${availableHeight}px`
+          el.style.overflowY = 'auto'
+        }
+        offsetTop += Math.min(blockHeight, availableHeight)
+        applied.push(el)
       }
     })
+    applied.at(-1)?.classList.add('memo-sticky-block-last')
   }, [editor])
 
   useEffect(() => {
@@ -458,6 +453,7 @@ export function MemoEditor({
 
   return (
     <div
+      className="memo-scroll-host"
       style={{ flex: 1, overflow: 'auto', padding: '10px 14px 20px' }}
       onScroll={() => setContextMenu(null)}
     >
@@ -517,6 +513,7 @@ export function MemoEditor({
         .memo-editor p { margin: 0 0 0.4em; }
         .memo-editor .memo-sticky-block {
           position: sticky;
+          box-sizing: border-box;
           background: ${paperBg};
         }
         .memo-editor .memo-sticky-block-last {

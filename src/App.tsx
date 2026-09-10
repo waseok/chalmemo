@@ -519,7 +519,7 @@ export default function App() {
         <span>
           {copied
             ? '복사됨'
-            : `${charCount}자${(activeTab.stickyBlockCount ?? 0) > 0 ? ` · 상단 ${activeTab.stickyBlockCount}줄 고정` : ''}`}
+            : `${charCount}자${(activeTab.stickyBlockCount ?? 0) > 0 ? ` · 상단 ${activeTab.stickyBlockCount}개 문단 고정` : ''}`}
         </span>
         <span>{state.settings.alwaysOnTop ? '항상 위' : '일반'}</span>
       </footer>
