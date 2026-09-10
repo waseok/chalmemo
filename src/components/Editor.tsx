@@ -75,6 +75,7 @@ export function MemoEditor({
   const stickyIndexRef = useRef(stickyBlockIndex)
   const onStickyChangeRef = useRef(onStickyChange)
   const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null)
+  const [pinnedPreview, setPinnedPreview] = useState<string | null>(null)
 
   useEffect(() => {
     onStickyChangeRef.current = onStickyChange
@@ -256,53 +257,32 @@ export function MemoEditor({
     },
   })
 
-  /** 사용자가 지정한 문단 하나만 스크롤 영역 위에 고정합니다. */
-  const applyStickyBlocks = useCallback(() => {
+  /** 지정한 문단을 본문 스크롤과 분리된 제목 영역에 즉시 복제합니다. */
+  const syncPinnedPreview = useCallback(() => {
     if (!editor) return
     const root = editor.view.dom
-    const scrollHost = root.closest('.memo-scroll-host') as HTMLElement | null
     const indexToPin = Math.max(0, stickyIndexRef.current) - 1
-    const maxStickyHeight = Math.max(72, (scrollHost?.clientHeight ?? 320) * 0.45)
-    Array.from(root.children).forEach((child, index) => {
-      const el = child as HTMLElement
-      el.classList.remove('memo-sticky-block', 'memo-sticky-block-last')
-      el.style.top = ''
-      el.style.zIndex = ''
-      el.style.maxHeight = ''
-      el.style.overflowY = ''
-      if (index === indexToPin) {
-        const blockHeight = el.offsetHeight
-        el.classList.add('memo-sticky-block', 'memo-sticky-block-last')
-        el.style.top = '0px'
-        el.style.zIndex = '30'
-        if (blockHeight > maxStickyHeight) {
-          el.style.maxHeight = `${maxStickyHeight}px`
-          el.style.overflowY = 'auto'
-        }
-      }
-    })
+    const target = indexToPin >= 0 ? (root.children.item(indexToPin) as HTMLElement | null) : null
+    const next = target?.outerHTML ?? null
+    setPinnedPreview((current) => (current === next ? current : next))
   }, [editor])
 
   useEffect(() => {
     stickyIndexRef.current = stickyBlockIndex
-    applyStickyBlocks()
-  }, [stickyBlockIndex, applyStickyBlocks])
+    syncPinnedPreview()
+  }, [stickyBlockIndex, syncPinnedPreview])
 
   useEffect(() => {
     if (!editor) return
     const rerun = () => {
-      requestAnimationFrame(applyStickyBlocks)
+      requestAnimationFrame(syncPinnedPreview)
     }
     editor.on('update', rerun)
-    editor.on('selectionUpdate', rerun)
-    window.addEventListener('resize', rerun)
     rerun()
     return () => {
       editor.off('update', rerun)
-      editor.off('selectionUpdate', rerun)
-      window.removeEventListener('resize', rerun)
     }
-  }, [editor, applyStickyBlocks])
+  }, [editor, syncPinnedPreview])
 
   useEffect(() => {
     if (!editor) return
@@ -310,9 +290,9 @@ export function MemoEditor({
     const next = JSON.stringify(content)
     if (current !== next) {
       editor.commands.setContent(content as JSONContent, { emitUpdate: false })
-      requestAnimationFrame(applyStickyBlocks)
+      requestAnimationFrame(syncPinnedPreview)
     }
-  }, [content, editor, applyStickyBlocks])
+  }, [content, editor, syncPinnedPreview])
 
   useEffect(() => {
     if (!editor) return
@@ -447,11 +427,29 @@ export function MemoEditor({
 
   return (
     <div
-      className="memo-scroll-host"
-      style={{ flex: 1, overflow: 'auto', padding: '10px 14px 20px' }}
-      onScroll={() => setContextMenu(null)}
+      className="memo-editor-shell"
+      style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column' }}
     >
-      <EditorContent editor={editor} />
+      {pinnedPreview ? (
+        <div
+          className="memo-pinned-header"
+          aria-label="상단 고정 문단"
+          style={{ color: textColor, background: paperBg, borderColor: paperBorder }}
+        >
+          <div
+            className="memo-editor memo-pinned-preview"
+            onClick={(event) => event.preventDefault()}
+            dangerouslySetInnerHTML={{ __html: pinnedPreview }}
+          />
+        </div>
+      ) : null}
+      <div
+        className="memo-scroll-host"
+        style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '10px 14px 20px' }}
+        onScroll={() => setContextMenu(null)}
+      >
+        <EditorContent editor={editor} />
+      </div>
       {contextMenu ? (
         <div
           className="memo-context-menu"
@@ -472,7 +470,7 @@ export function MemoEditor({
               stickyIndexRef.current = contextMenu.blockIndex
               onStickyChangeRef.current(contextMenu.blockIndex)
               setContextMenu(null)
-              requestAnimationFrame(applyStickyBlocks)
+              requestAnimationFrame(syncPinnedPreview)
             }}
           >
             이 문단을 상단 고정
@@ -485,7 +483,7 @@ export function MemoEditor({
                 stickyIndexRef.current = 0
                 onStickyChangeRef.current(0)
                 setContextMenu(null)
-                requestAnimationFrame(applyStickyBlocks)
+                requestAnimationFrame(syncPinnedPreview)
               }}
             >
               상단 고정 해제
@@ -505,15 +503,22 @@ export function MemoEditor({
           word-break: break-word;
         }
         .memo-editor p { margin: 0 0 0.4em; }
-        .memo-editor .memo-sticky-block {
-          position: sticky;
-          box-sizing: border-box;
-          background: ${paperBg};
-        }
-        .memo-editor .memo-sticky-block-last {
+        .memo-pinned-header {
+          flex: 0 1 45%;
+          max-height: 45%;
+          padding: 8px 14px 6px;
+          overflow: auto;
           border-bottom: 1px solid ${paperBorder};
-          padding-bottom: 6px;
-          margin-bottom: 6px;
+          box-shadow: 0 3px 8px rgba(47, 52, 55, 0.08);
+        }
+        .memo-pinned-preview {
+          min-height: 0;
+        }
+        .memo-pinned-preview > :first-child {
+          margin-top: 0;
+        }
+        .memo-pinned-preview > :last-child {
+          margin-bottom: 0;
         }
         .memo-context-menu {
           position: fixed;
