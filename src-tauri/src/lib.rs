@@ -12,7 +12,8 @@ use serde::Serialize;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WindowEvent,
+    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+    WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
@@ -53,20 +54,85 @@ fn load_app_state(state: State<'_, AppStore>) -> Result<store::AppState, String>
 }
 
 #[tauri::command]
-fn save_app_state(state: State<'_, AppStore>, data: store::AppState) -> Result<(), String> {
+fn save_app_state(
+    app: AppHandle,
+    state: State<'_, AppStore>,
+    data: store::AppState,
+) -> Result<(), String> {
     store::save_state(&data)?;
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
-    *guard = data;
+    *guard = data.clone();
+    drop(guard);
+    let _ = app.emit("app-state-changed", data);
     Ok(())
 }
 
 #[tauri::command]
-fn set_always_on_top(app: AppHandle, enabled: bool) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window("main") {
-        win.set_always_on_top(enabled)
-            .map_err(|e| e.to_string())?;
-    }
+fn save_tab_state(
+    app: AppHandle,
+    state: State<'_, AppStore>,
+    tab: store::Tab,
+) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    let Some(index) = guard.tabs.iter().position(|item| item.id == tab.id) else {
+        return Err("저장할 메모 탭을 찾을 수 없습니다.".into());
+    };
+    let mut next = guard.clone();
+    next.tabs[index] = tab;
+    store::save_state(&next)?;
+    *guard = next.clone();
+    drop(guard);
+    let _ = app.emit("app-state-changed", next);
     Ok(())
+}
+
+#[tauri::command]
+fn set_always_on_top(window: WebviewWindow, enabled: bool) -> Result<(), String> {
+    window
+        .set_always_on_top(enabled)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn open_tab_window(
+    app: AppHandle,
+    state: State<'_, AppStore>,
+    tab_id: String,
+    title: String,
+) -> Result<(), String> {
+    let label = format!("memo-{tab_id}");
+    if let Some(window) = app.get_webview_window(&label) {
+        window.show().map_err(|e| e.to_string())?;
+        window.unminimize().map_err(|e| e.to_string())?;
+        return window.set_focus().map_err(|e| e.to_string());
+    }
+
+    let always_on_top = {
+        let guard = state.0.lock().map_err(|e| e.to_string())?;
+        if !guard.tabs.iter().any(|tab| tab.id == tab_id) {
+            return Err("새창으로 열 메모 탭을 찾을 수 없습니다.".into());
+        }
+        guard.settings.always_on_top
+    };
+
+    let window = WebviewWindowBuilder::new(
+        &app,
+        label,
+        WebviewUrl::App(format!("index.html?tab={tab_id}").into()),
+    )
+    .title(format!("찰메모 · {title}"))
+    .inner_size(380.0, 520.0)
+    .min_inner_size(280.0, 320.0)
+    .decorations(false)
+    .resizable(true)
+    .always_on_top(always_on_top)
+    .skip_taskbar(false)
+    .build()
+    .map_err(|e| format!("메모 새창 열기 실패: {e}"))?;
+    if let Some(icon) = app.default_window_icon() {
+        let _ = window.set_icon(icon.clone());
+    }
+    window.set_focus().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -303,11 +369,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             load_app_state,
             save_app_state,
+            save_tab_state,
             set_always_on_top,
             set_window_opacity,
             save_image_bytes,
             fetch_link_metadata,
             show_main_window,
+            open_tab_window,
             register_shortcut,
             check_app_update,
             install_app_update,
@@ -393,9 +461,11 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                let _ = window.hide();
+            if window.label() == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
             }
         })
         .run(tauri::generate_context!())

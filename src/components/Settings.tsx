@@ -4,11 +4,13 @@ import { PAPER_COLORS, type PaperColor, type Settings } from '../lib/types'
 interface SettingsPanelProps {
   appVersion: string
   settings: Settings
+  currentPaperColor: PaperColor
   text: string
   muted: string
   border: string
   bg: string
   onChange: (next: Partial<Settings>) => void
+  onPaperColorChange: (color: PaperColor) => void
   onClose: () => void
   onRegisterShortcut: (shortcut: string) => void
   onCheckUpdate: () => Promise<string>
@@ -18,6 +20,14 @@ const PAPERS: { id: PaperColor; label: string }[] = [
   { id: 'yellow', label: '노랑' },
   { id: 'cream', label: '미색' },
   { id: 'green', label: '연녹' },
+  { id: 'pink', label: '분홍' },
+  { id: 'blue', label: '하늘' },
+  { id: 'purple', label: '보라' },
+  { id: 'orange', label: '주황' },
+  { id: 'neonYellow', label: '형광 노랑' },
+  { id: 'neonGreen', label: '형광 초록' },
+  { id: 'neonPink', label: '형광 분홍' },
+  { id: 'neonCyan', label: '형광 하늘' },
   { id: 'lime', label: '칠판' },
   { id: 'dark', label: '다크' },
 ]
@@ -25,11 +35,13 @@ const PAPERS: { id: PaperColor; label: string }[] = [
 export function SettingsPanel({
   appVersion,
   settings,
+  currentPaperColor,
   text,
   muted,
   border,
   bg,
   onChange,
+  onPaperColorChange,
   onClose,
   onRegisterShortcut,
   onCheckUpdate,
@@ -102,18 +114,18 @@ export function SettingsPanel({
       </label>
 
       <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 13, marginBottom: 8, color: muted }}>용지 색</div>
+        <div style={{ fontSize: 13, marginBottom: 8, color: muted }}>현재 메모 색</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {PAPERS.map((p) => (
             <button
               key={p.id}
               type="button"
-              onClick={() => onChange({ paperColor: p.id })}
+              onClick={() => onPaperColorChange(p.id)}
               style={{
                 flex: 1,
                 padding: '8px 0',
                 borderRadius: 6,
-                border: settings.paperColor === p.id ? `2px solid ${text}` : `1px solid ${border}`,
+                border: currentPaperColor === p.id ? `2px solid ${text}` : `1px solid ${border}`,
                 background: PAPER_COLORS[p.id].bg,
                 color: PAPER_COLORS[p.id].text,
                 cursor: 'pointer',

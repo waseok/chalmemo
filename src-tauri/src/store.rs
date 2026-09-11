@@ -20,6 +20,9 @@ pub struct Tab {
     pub title: String,
     pub content: Value,
     pub order: u32,
+    /// 탭별 포스트잇 색. None이면 기존 전역 설정 색을 사용
+    #[serde(default)]
+    pub paper_color: Option<String>,
     /// 스크롤해도 위에 남는 문단의 1부터 시작하는 번호. 0이면 고정 없음
     #[serde(default, rename = "stickyBlockIndex", alias = "stickyBlockCount")]
     pub sticky_block_index: u32,
@@ -89,6 +92,7 @@ impl Default for AppState {
                 title: "메모 1".into(),
                 content: empty_doc(),
                 order: 0,
+                paper_color: None,
                 sticky_block_index: 0,
             }],
             settings: Settings::default(),

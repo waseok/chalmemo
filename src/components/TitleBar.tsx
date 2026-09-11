@@ -8,6 +8,7 @@ import {
   Minus,
   PushPin,
   PushPinSlash,
+  TextB,
   X,
 } from '@phosphor-icons/react'
 
@@ -20,6 +21,7 @@ interface TitleBarProps {
   onPasteToMemo: () => void
   onCopyAll: () => void
   onInsertDate: () => void
+  onToggleBold: () => void
   onMinimize: () => void
   onToggleMaximize: () => void
   onClose: () => void
@@ -37,6 +39,7 @@ export function TitleBar({
   onPasteToMemo,
   onCopyAll,
   onInsertDate,
+  onToggleBold,
   onMinimize,
   onToggleMaximize,
   onClose,
@@ -74,6 +77,9 @@ export function TitleBar({
         </strong>
         <button type="button" style={btn} title="오늘 날짜 넣기" onClick={onInsertDate}>
           <CalendarBlank size={16} weight="bold" />
+        </button>
+        <button type="button" style={btn} title="굵게 (Ctrl+B)" onClick={onToggleBold}>
+          <TextB size={16} weight="bold" />
         </button>
         <button type="button" style={btn} title="메모에 붙여넣기" onClick={onPasteToMemo}>
           붙여넣기

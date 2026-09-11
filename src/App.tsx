@@ -28,6 +28,8 @@ function uid() {
   return crypto.randomUUID()
 }
 
+const DETACHED_TAB_ID = new URLSearchParams(window.location.search).get('tab')
+
 export default function App() {
   const [state, setState] = useState<AppState | null>(null)
   const [showSettings, setShowSettings] = useState(false)
@@ -47,6 +49,7 @@ export default function App() {
   const [updateError, setUpdateError] = useState<string | null>(null)
   const editorApi = useRef<EditorApi | null>(null)
   const saveTimer = useRef<number | null>(null)
+  const tabSaveTimer = useRef<number | null>(null)
   const stateRef = useRef<AppState | null>(null)
 
   useEffect(() => {
@@ -66,10 +69,27 @@ export default function App() {
     }, 400)
   }, [])
 
+  const persistTab = useCallback((tab: Tab) => {
+    const current = stateRef.current
+    if (!current || !current.tabs.some((item) => item.id === tab.id)) return
+    const next = {
+      ...current,
+      tabs: current.tabs.map((item) => (item.id === tab.id ? tab : item)),
+    }
+    stateRef.current = next
+    setState(next)
+    if (tabSaveTimer.current) window.clearTimeout(tabSaveTimer.current)
+    tabSaveTimer.current = window.setTimeout(() => {
+      void invoke('save_tab_state', { tab })
+    }, 400)
+  }, [])
+
   useEffect(() => {
     void (async () => {
       const loaded = await invoke<AppState>('load_app_state')
+      stateRef.current = loaded
       setState(loaded)
+      if (DETACHED_TAB_ID) return
       try {
         if (import.meta.env.DEV) {
           // 개발 실행을 시작프로그램에 넣으면 재부팅 때 터미널이 뜹니다.
@@ -96,11 +116,32 @@ export default function App() {
     })()
   }, [])
 
-  const paper = PAPER_COLORS[state?.settings.paperColor ?? 'yellow']
+  useEffect(() => {
+    let alive = true
+    let unlisten: (() => void) | undefined
+    void listen<AppState>('app-state-changed', (event) => {
+      if (!alive) return
+      stateRef.current = event.payload
+      setState(event.payload)
+    }).then((fn) => {
+      if (!alive) fn()
+      else unlisten = fn
+    })
+    return () => {
+      alive = false
+      unlisten?.()
+    }
+  }, [])
+
+  const viewTabId = DETACHED_TAB_ID ?? state?.activeTabId
   const activeTab = useMemo(
-    () => state?.tabs.find((t) => t.id === state.activeTabId) ?? state?.tabs[0],
-    [state],
+    () =>
+      state?.tabs.find((tab) => tab.id === viewTabId) ??
+      (DETACHED_TAB_ID ? undefined : state?.tabs[0]),
+    [state, viewTabId],
   )
+  const currentPaperColor = activeTab?.paperColor ?? state?.settings.paperColor ?? 'yellow'
+  const paper = PAPER_COLORS[currentPaperColor]
 
   const updateSettings = async (partial: Partial<Settings>) => {
     if (!state) return
@@ -132,13 +173,12 @@ export default function App() {
   const updateTabContent = useCallback((content: Record<string, unknown>) => {
     const current = stateRef.current
     if (!current) return
-    const tabs = current.tabs.map((tab) =>
-      tab.id === current.activeTabId ? { ...tab, content } : tab,
-    )
-    persist({ ...current, tabs })
+    const tab = current.tabs.find((item) => item.id === (DETACHED_TAB_ID ?? current.activeTabId))
+    if (!tab) return
+    persistTab({ ...tab, content })
     const text = editorApi.current?.getText() ?? ''
     setCharCount(text.replace(/\s/g, '').length)
-  }, [persist])
+  }, [persistTab])
 
   const addTab = () => {
     if (!state) return
@@ -147,6 +187,7 @@ export default function App() {
       title: `메모 ${state.tabs.length + 1}`,
       content: EMPTY_DOC,
       order: state.tabs.length,
+      paperColor: activeTab?.paperColor ?? state.settings.paperColor,
       stickyBlockIndex: 0,
     }
     persist({ ...state, tabs: [...state.tabs, tab], activeTabId: tab.id })
@@ -154,6 +195,10 @@ export default function App() {
 
   const closeTab = (id: string) => {
     if (!state || state.tabs.length <= 1) return
+    const target = state.tabs.find((tab) => tab.id === id)
+    if (!target || !window.confirm(`“${target.title}” 탭을 삭제할까요?\n삭제한 메모는 되돌릴 수 없습니다.`)) {
+      return
+    }
     const tabs = state.tabs.filter((t) => t.id !== id).map((t, i) => ({ ...t, order: i }))
     const activeTabId = state.activeTabId === id ? tabs[0].id : state.activeTabId
     persist({ ...state, tabs, activeTabId })
@@ -162,13 +207,10 @@ export default function App() {
   const setStickyBlockIndex = useCallback((index: number) => {
     const current = stateRef.current
     if (!current) return
-    const tabs = current.tabs.map((tab) =>
-      tab.id === current.activeTabId
-        ? { ...tab, stickyBlockIndex: Math.max(0, index) }
-        : tab,
-    )
-    persist({ ...current, tabs })
-  }, [persist])
+    const tab = current.tabs.find((item) => item.id === (DETACHED_TAB_ID ?? current.activeTabId))
+    if (!tab) return
+    persistTab({ ...tab, stickyBlockIndex: Math.max(0, index) })
+  }, [persistTab])
 
   const handlePasteToMemo = useCallback(async (_unused?: boolean, payload?: PasteRequest) => {
     try {
@@ -246,6 +288,7 @@ export default function App() {
 
   // 리스너는 한 번만 등록 (StrictMode/의존성 변경으로 2번 붙는 것 방지)
   useEffect(() => {
+    if (DETACHED_TAB_ID) return
     let alive = true
     let unlisten: (() => void) | undefined
     void listen<PasteRequest>('memo-paste-request', (event) => {
@@ -267,19 +310,24 @@ export default function App() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!state) return
+      if (DETACHED_TAB_ID && e.ctrlKey && e.key.toLowerCase() === 'w') {
+        e.preventDefault()
+        void getCurrentWindow().close()
+        return
+      }
       if (e.ctrlKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
         addTab()
       }
       if (e.ctrlKey && e.key.toLowerCase() === 'w') {
         e.preventDefault()
-        closeTab(state.activeTabId)
+        closeTab(DETACHED_TAB_ID ?? state.activeTabId)
       }
       if (e.ctrlKey && e.key.toLowerCase() === 'f') {
         e.preventDefault()
         setShowFind(true)
       }
-      if (e.ctrlKey && e.key === 'Tab') {
+      if (!DETACHED_TAB_ID && e.ctrlKey && e.key === 'Tab') {
         e.preventDefault()
         const sorted = [...state.tabs].sort((a, b) => a.order - b.order)
         const idx = sorted.findIndex((t) => t.id === state.activeTabId)
@@ -294,6 +342,7 @@ export default function App() {
 
   // 창 위치/크기 저장
   useEffect(() => {
+    if (DETACHED_TAB_ID) return
     const win = getCurrentWindow()
     let timer: number | null = null
     const saveBounds = async () => {
@@ -330,6 +379,12 @@ export default function App() {
       void unsubs.then((fns) => fns.forEach((u) => u()))
     }
   }, [persist])
+
+  useEffect(() => {
+    if (DETACHED_TAB_ID && state && !state.tabs.some((tab) => tab.id === DETACHED_TAB_ID)) {
+      void getCurrentWindow().close()
+    }
+  }, [state])
 
   useEffect(() => {
     const onWheel = (event: WheelEvent) => {
@@ -383,12 +438,15 @@ export default function App() {
           })
         }}
         onInsertDate={() => editorApi.current?.insertDate()}
+        onToggleBold={() => editorApi.current?.toggleBold()}
         onMinimize={() => void getCurrentWindow().hide()}
         onToggleMaximize={() => void getCurrentWindow().toggleMaximize()}
-        onClose={() => void getCurrentWindow().hide()}
+        onClose={() =>
+          void (DETACHED_TAB_ID ? getCurrentWindow().close() : getCurrentWindow().hide())
+        }
       />
 
-      {updateInfo?.available && (
+      {!DETACHED_TAB_ID && updateInfo?.available && (
         <div
           style={{
             display: 'flex',
@@ -463,16 +521,23 @@ export default function App() {
 
       <TabBar
         tabs={state.tabs}
-        activeTabId={state.activeTabId}
+        activeTabId={activeTab.id}
         text={paper.text}
         muted={paper.muted}
         border={paper.border}
-        onSelect={(id) => persist({ ...state, activeTabId: id })}
+        detached={Boolean(DETACHED_TAB_ID)}
+        onSelect={(id) => {
+          if (!DETACHED_TAB_ID) persist({ ...state, activeTabId: id })
+        }}
         onAdd={addTab}
         onClose={closeTab}
+        onDetach={(id) => {
+          const tab = state.tabs.find((item) => item.id === id)
+          if (tab) void invoke('open_tab_window', { tabId: id, title: tab.title })
+        }}
         onRename={(id, title) => {
-          const tabs = state.tabs.map((t) => (t.id === id ? { ...t, title } : t))
-          persist({ ...state, tabs })
+          const tab = state.tabs.find((item) => item.id === id)
+          if (tab) persistTab({ ...tab, title })
         }}
       />
 
@@ -528,11 +593,13 @@ export default function App() {
         <SettingsPanel
           appVersion={appVersion}
           settings={state.settings}
+          currentPaperColor={currentPaperColor}
           text={paper.text}
           muted={paper.muted}
           border={paper.border}
           bg={paper.bg}
           onChange={(p) => void updateSettings(p)}
+          onPaperColorChange={(color) => persistTab({ ...activeTab, paperColor: color })}
           onClose={() => setShowSettings(false)}
           onRegisterShortcut={(shortcut) => {
             void invoke('register_shortcut', { shortcut })

@@ -42,6 +42,7 @@ export interface EditorApi {
     linkCard?: LinkMetadata
   }) => void
   insertDate: () => void
+  toggleBold: () => void
   toggleTask: () => void
   focusFind: (query: string) => void
   getJSON: () => JSONContent
@@ -401,6 +402,9 @@ export function MemoEditor({
       },
       insertDate: () => {
         editor.chain().focus().insertContent(todayLabel() + ' ').run()
+      },
+      toggleBold: () => {
+        editor.chain().focus().toggleBold().run()
       },
       toggleTask: () => {
         editor.chain().focus().toggleTaskList().run()
