@@ -9,7 +9,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { tryEvaluateBeforeEquals } from '../lib/calc'
-import { tableContentFromClipboard } from '../lib/tablePaste'
+import { contentFromPlainTextWithTables } from '../lib/tablePaste'
 import { toPlainText } from '../lib/export'
 import {
   extractSingleUrl,
@@ -17,6 +17,7 @@ import {
   type LinkMetadata,
 } from '../lib/linkMetadata'
 import { LinkCard, linkCardWithTrailingParagraph } from './LinkCard'
+import { DeletableTable } from './DeletableTable'
 import { ResizableImage } from './ResizableImage'
 
 interface EditorProps {
@@ -98,8 +99,9 @@ export function MemoEditor({
       LinkCard,
       ResizableImage,
       TableKit.configure({
-        table: { resizable: false },
+        table: false,
       }),
+      DeletableTable,
       Placeholder.configure({
         placeholder: '메모를 입력하세요…  23*5=  후 스페이스 두 번으로 계산',
       }),
@@ -168,10 +170,12 @@ export function MemoEditor({
       handlePaste: (_view, event) => {
         const html = event.clipboardData?.getData('text/html') ?? ''
         const plain = event.clipboardData?.getData('text/plain') ?? ''
-        const table = tableContentFromClipboard(html, plain)
-        if (table) {
+        // HTML 표는 앞뒤 본문까지 TipTap 기본 파서가 보존하도록 그대로 맡깁니다.
+        const hasHtmlTable = /<table[\s>]/i.test(html)
+        const mixedContent = hasHtmlTable ? null : contentFromPlainTextWithTables(plain)
+        if (mixedContent) {
           event.preventDefault()
-          editor?.chain().focus().insertContent(table).run()
+          editor?.chain().focus().insertContent(mixedContent).run()
           return true
         }
 
@@ -359,9 +363,9 @@ export function MemoEditor({
         }
         if (!text) return
 
-        const table = tableContentFromClipboard(text, text)
-        if (table) {
-          editor.chain().focus('end').insertContent(table).run()
+        const mixedContent = contentFromPlainTextWithTables(text)
+        if (mixedContent) {
+          editor.chain().focus('end').insertContent(mixedContent).run()
           return
         }
 
@@ -713,6 +717,35 @@ export function MemoEditor({
           margin: 0.5em 0;
           border-collapse: collapse;
           table-layout: fixed;
+        }
+        .memo-table-wrap {
+          position: relative;
+          padding-right: 28px;
+        }
+        .memo-table-remove {
+          position: absolute;
+          top: 0.5em;
+          right: 0;
+          min-width: 1.6em;
+          padding: 0 6px;
+          color: ${mutedColor};
+          font-size: 1.1em;
+          line-height: 1.4;
+          background: transparent;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          cursor: pointer;
+          opacity: 0.55;
+        }
+        .memo-table-remove:hover,
+        .memo-table-remove:focus-visible {
+          color: ${textColor};
+          background: rgba(0, 0, 0, 0.06);
+          outline: none;
+          opacity: 1;
+        }
+        .memo-pinned-preview .memo-table-remove {
+          display: none;
         }
         .memo-editor th,
         .memo-editor td {

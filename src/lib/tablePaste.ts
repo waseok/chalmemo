@@ -14,6 +14,13 @@ function cellNode(text: string): JSONContent {
   }
 }
 
+function paragraphNode(text: string): JSONContent {
+  return {
+    type: 'paragraph',
+    content: text ? [{ type: 'text', text }] : undefined,
+  }
+}
+
 /** 2차원 배열을 TipTap table JSON으로 바꿉니다. */
 export function rowsToTableContent(rows: string[][]): JSONContent {
   const width = Math.max(...rows.map((row) => row.length), 0)
@@ -87,4 +94,32 @@ export function tableContentFromClipboard(html: string, plain: string): JSONCont
   const rows = parseTableFromHtml(html) ?? parseTableFromPlainText(plain)
   if (!rows) return null
   return rowsToTableContent(rows)
+}
+
+/**
+ * 일반 텍스트에 본문과 탭 표가 섞여 있으면 순서를 유지한 TipTap 노드로 바꿉니다.
+ * HTML 표가 제공된 경우에는 이 함수를 쓰지 않고 TipTap의 기본 HTML 붙여넣기에 맡깁니다.
+ */
+export function contentFromPlainTextWithTables(text: string): JSONContent[] | null {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  if (!lines.some((line) => line.includes('\t'))) return null
+
+  const content: JSONContent[] = []
+  let index = 0
+  while (index < lines.length) {
+    if (lines[index].includes('\t')) {
+      const rows: string[][] = []
+      while (index < lines.length && lines[index].includes('\t')) {
+        rows.push(lines[index].split('\t').map((cell) => cell.trim()))
+        index += 1
+      }
+      content.push(rowsToTableContent(rows))
+      continue
+    }
+
+    content.push(paragraphNode(lines[index]))
+    index += 1
+  }
+
+  return content
 }

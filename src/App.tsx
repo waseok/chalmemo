@@ -13,7 +13,7 @@ import { TabBar } from './components/TabBar'
 import { TitleBar } from './components/TitleBar'
 import { exportMd, exportPdf, exportTxt } from './lib/export'
 import { extractSingleUrl, resolveLinkMetadata } from './lib/linkMetadata'
-import { tableContentFromClipboard } from './lib/tablePaste'
+import { contentFromPlainTextWithTables } from './lib/tablePaste'
 import {
   EMPTY_DOC,
   PAPER_COLORS,
@@ -206,7 +206,7 @@ export default function App() {
         if (text?.trim()) {
           const looksHtml =
             text.trim().startsWith('<html') || text.trim().startsWith('<!--StartFragment')
-          const isTable = Boolean(tableContentFromClipboard(text, text))
+          const isTable = Boolean(contentFromPlainTextWithTables(text))
           if (!looksHtml || isTable) {
             await insertText(text)
             return

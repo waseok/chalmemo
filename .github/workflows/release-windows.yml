@@ -43,14 +43,13 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: '찰메모 v__VERSION__'
           releaseBody: |
-            상단 고정, 자동 업데이트, Windows 작업표시줄 표시를 개선했습니다.
+            문서 붙여넣기와 표 편집을 개선했습니다.
 
-            - 우클릭한 문단을 제목처럼 별도 상단 영역에 즉시 표시
-            - 본문과 분리된 고정 영역은 스크롤해도 계속 보임
-            - 고정 헤더에서 바로 누를 수 있는 고정 취소 버튼
+            - 표가 포함된 문서를 붙여넣을 때 표 앞뒤의 제목과 본문도 함께 유지
+            - 일반 텍스트에 본문과 탭 표가 섞여 있어도 원래 순서대로 삽입
+            - 각 표 오른쪽의 × 버튼으로 표 전체를 바로 삭제
             - GitHub 릴리스 CDN이 막힌 환경을 위한 전용 업데이터 미러
             - Windows curl 우선 다운로드와 브라우저 다운로드 대체 경로
-            - 자동 시작 후 창을 열 때 작업표시줄 아이콘 복구
           releaseDraft: true
           prerelease: false
           releaseAssetNamePattern: chalmemo_[version]_x64-setup.exe
