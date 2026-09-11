@@ -57,6 +57,7 @@ export default function App() {
   } | null>(null)
   const [updating, setUpdating] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [detachedWindowError, setDetachedWindowError] = useState<string | null>(null)
   const editorApi = useRef<EditorApi | null>(null)
   const saveTimer = useRef<number | null>(null)
   const tabSaveTimer = useRef<number | null>(null)
@@ -129,18 +130,23 @@ export default function App() {
 
   useEffect(() => {
     let alive = true
-    let unlisten: (() => void) | undefined
-    void listen<AppState>('app-state-changed', (event) => {
-      if (!alive) return
-      stateRef.current = event.payload
-      setState(event.payload)
-    }).then((fn) => {
-      if (!alive) fn()
-      else unlisten = fn
+    const unlisteners: Array<() => void> = []
+    void Promise.all([
+      listen<AppState>('app-state-changed', (event) => {
+        if (!alive) return
+        stateRef.current = event.payload
+        setState(event.payload)
+      }),
+      listen<string>('detached-window-error', (event) => {
+        if (alive) setDetachedWindowError(event.payload)
+      }),
+    ]).then((listeners) => {
+      if (!alive) listeners.forEach((unlisten) => unlisten())
+      else unlisteners.push(...listeners)
     })
     return () => {
       alive = false
-      unlisten?.()
+      unlisteners.forEach((unlisten) => unlisten())
     }
   }, [])
 
@@ -544,13 +550,36 @@ export default function App() {
         onClose={closeTab}
         onDetach={(id) => {
           const tab = state.tabs.find((item) => item.id === id)
-          if (tab) void invoke('open_tab_window', { tabId: id, title: tab.title })
+          if (!tab) return
+          setDetachedWindowError(null)
+          void invoke('open_tab_window', { tabId: id, title: tab.title }).catch((error) => {
+            setDetachedWindowError(error instanceof Error ? error.message : String(error))
+          })
         }}
         onRename={(id, title) => {
           const tab = state.tabs.find((item) => item.id === id)
           if (tab) persistTab({ ...tab, title })
         }}
       />
+
+      {detachedWindowError && (
+        <div
+          style={{
+            display: 'flex',
+            gap: 8,
+            alignItems: 'center',
+            padding: '6px 10px',
+            borderBottom: `1px solid ${paper.border}`,
+            color: '#9f2d20',
+            fontSize: 12,
+          }}
+        >
+          <span style={{ flex: 1 }}>{detachedWindowError}</span>
+          <button type="button" className="chip" onClick={() => setDetachedWindowError(null)}>
+            닫기
+          </button>
+        </div>
+      )}
 
       {showFind && (
         <FindBar
