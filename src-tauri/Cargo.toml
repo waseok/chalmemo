@@ -1,6 +1,6 @@
 [package]
 name = "chalmemo"
-version = "0.1.20"
+version = "0.1.21"
 description = "찰메모 — Windows sticky tab memo"
 authors = ["waseok"]
 edition = "2021"

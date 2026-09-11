@@ -12,8 +12,7 @@ use serde::Serialize;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
-    WindowEvent,
+    AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
@@ -98,68 +97,16 @@ fn set_always_on_top(window: WebviewWindow, enabled: bool) -> Result<(), String>
 }
 
 #[tauri::command]
-fn open_tab_window(
-    app: AppHandle,
-    state: State<'_, AppStore>,
-    tab_id: String,
-    title: String,
-) -> Result<(), String> {
-    let label = format!("memo-{tab_id}");
-    log::info!("detached memo window requested: label={label}");
-    if let Some(window) = app.get_webview_window(&label) {
-        window.show().map_err(|e| e.to_string())?;
-        window.unminimize().map_err(|e| e.to_string())?;
-        return window.set_focus().map_err(|e| e.to_string());
+fn detached_window_smoke_test() -> bool {
+    std::env::args().any(|arg| arg == "--smoke-test-detached-window")
+}
+
+#[tauri::command]
+fn log_detached_window_stage(stage: String, label: String, detail: Option<String>) {
+    match detail {
+        Some(detail) => log::info!("detached memo frontend: stage={stage} label={label} detail={detail}"),
+        None => log::info!("detached memo frontend: stage={stage} label={label}"),
     }
-
-    let always_on_top = {
-        let guard = state.0.lock().map_err(|e| e.to_string())?;
-        if !guard.tabs.iter().any(|tab| tab.id == tab_id) {
-            return Err("새창으로 열 메모 탭을 찾을 수 없습니다.".into());
-        }
-        guard.settings.always_on_top
-    };
-
-    // IPC 명령을 처리하는 동안 WebView 생성을 동기로 기다리면 Windows에서
-    // 이벤트 루프가 서로를 기다리며 앱이 멈출 수 있습니다. 생성을 메인 루프에
-    // 예약하고 현재 명령은 즉시 반환합니다.
-    let app_for_window = app.clone();
-    let scheduled_tab_id = tab_id.clone();
-    app.run_on_main_thread(move || {
-        let result = WebviewWindowBuilder::new(
-            &app_for_window,
-            label,
-            WebviewUrl::App("index.html".into()),
-        )
-        .title(format!("찰메모 · {title}"))
-        .inner_size(380.0, 520.0)
-        .min_inner_size(280.0, 320.0)
-        .decorations(false)
-        .resizable(true)
-        .always_on_top(always_on_top)
-        .skip_taskbar(false)
-        .build();
-
-        match result {
-            Ok(window) => {
-                if let Some(icon) = app_for_window.default_window_icon() {
-                    let _ = window.set_icon(icon.clone());
-                }
-                log::info!("detached memo window created: tab={tab_id}");
-                if let Err(error) = window.set_focus() {
-                    log::error!("detached memo window focus failed: {error}");
-                }
-            }
-            Err(error) => {
-                let message = format!("메모 새창 열기 실패: {error}");
-                log::error!("{message}");
-                let _ = app_for_window.emit_to("main", "detached-window-error", message);
-            }
-        }
-    })
-    .map_err(|e| format!("메모 새창 열기 예약 실패: {e}"))?;
-    log::info!("detached memo window scheduled: tab={scheduled_tab_id}");
-    Ok(())
 }
 
 #[tauri::command]
@@ -402,7 +349,8 @@ pub fn run() {
             save_image_bytes,
             fetch_link_metadata,
             show_main_window,
-            open_tab_window,
+            detached_window_smoke_test,
+            log_detached_window_stage,
             register_shortcut,
             check_app_update,
             install_app_update,

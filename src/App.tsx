@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { listen } from '@tauri-apps/api/event'
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { disable, enable, isEnabled } from '@tauri-apps/plugin-autostart'
 import { readImage, readText, writeText } from '@tauri-apps/plugin-clipboard-manager'
@@ -38,6 +39,69 @@ const CURRENT_WINDOW_LABEL = (() => {
 const DETACHED_TAB_ID = CURRENT_WINDOW_LABEL.startsWith('memo-')
   ? CURRENT_WINDOW_LABEL.slice('memo-'.length)
   : null
+
+function logDetachedWindowStage(stage: string, label: string, detail?: string) {
+  void invoke('log_detached_window_stage', { stage, label, detail: detail ?? null })
+}
+
+async function openDetachedWindow(tab: Tab, alwaysOnTop: boolean) {
+  const label = `memo-${tab.id}`
+  logDetachedWindowStage('requested', label)
+
+  const existing = await WebviewWindow.getByLabel(label)
+  if (existing) {
+    await existing.show()
+    await existing.unminimize()
+    await existing.setFocus()
+    logDetachedWindowStage('focused-existing', label)
+    return
+  }
+
+  const detached = new WebviewWindow(label, {
+    url: 'index.html',
+    title: `찰메모 · ${tab.title}`,
+    width: 380,
+    height: 520,
+    minWidth: 280,
+    minHeight: 320,
+    decorations: false,
+    resizable: true,
+    alwaysOnTop,
+    skipTaskbar: false,
+    focus: true,
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    let settled = false
+    const finish = (callback: () => void) => {
+      if (settled) return
+      settled = true
+      window.clearTimeout(timeout)
+      callback()
+    }
+    const timeout = window.setTimeout(() => {
+      finish(() => {
+        const message = '새창 생성이 15초 안에 완료되지 않았습니다.'
+        logDetachedWindowStage('timeout', label, message)
+        reject(new Error(message))
+      })
+    }, 15_000)
+
+    void detached.once('tauri://created', () => {
+      finish(() => {
+        logDetachedWindowStage('created', label)
+        resolve()
+      })
+    })
+    void detached.once<string>('tauri://error', (event) => {
+      finish(() => {
+        const message = String(event.payload)
+        logDetachedWindowStage('error', label, message)
+        reject(new Error(message))
+      })
+    })
+  })
+}
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null)
@@ -102,6 +166,11 @@ export default function App() {
         stateRef.current = loaded
         setState(loaded)
         if (DETACHED_TAB_ID) return
+        if (await invoke<boolean>('detached_window_smoke_test')) {
+          const smokeTab =
+            loaded.tabs.find((tab) => tab.id === loaded.activeTabId) ?? loaded.tabs[0]
+          if (smokeTab) await openDetachedWindow(smokeTab, loaded.settings.alwaysOnTop)
+        }
         if (import.meta.env.DEV) {
           // 개발 실행을 시작프로그램에 넣으면 재부팅 때 터미널이 뜹니다.
           await disable()
@@ -130,23 +199,18 @@ export default function App() {
 
   useEffect(() => {
     let alive = true
-    const unlisteners: Array<() => void> = []
-    void Promise.all([
-      listen<AppState>('app-state-changed', (event) => {
-        if (!alive) return
-        stateRef.current = event.payload
-        setState(event.payload)
-      }),
-      listen<string>('detached-window-error', (event) => {
-        if (alive) setDetachedWindowError(event.payload)
-      }),
-    ]).then((listeners) => {
-      if (!alive) listeners.forEach((unlisten) => unlisten())
-      else unlisteners.push(...listeners)
+    let unlisten: (() => void) | undefined
+    void listen<AppState>('app-state-changed', (event) => {
+      if (!alive) return
+      stateRef.current = event.payload
+      setState(event.payload)
+    }).then((fn) => {
+      if (!alive) fn()
+      else unlisten = fn
     })
     return () => {
       alive = false
-      unlisteners.forEach((unlisten) => unlisten())
+      unlisten?.()
     }
   }, [])
 
@@ -552,7 +616,7 @@ export default function App() {
           const tab = state.tabs.find((item) => item.id === id)
           if (!tab) return
           setDetachedWindowError(null)
-          void invoke('open_tab_window', { tabId: id, title: tab.title }).catch((error) => {
+          void openDetachedWindow(tab, state.settings.alwaysOnTop).catch((error) => {
             setDetachedWindowError(error instanceof Error ? error.message : String(error))
           })
         }}
