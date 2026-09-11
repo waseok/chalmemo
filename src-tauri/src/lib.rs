@@ -48,7 +48,11 @@ struct PastePayload {
 }
 
 #[tauri::command]
-fn load_app_state(state: State<'_, AppStore>) -> Result<store::AppState, String> {
+fn load_app_state(
+    window: WebviewWindow,
+    state: State<'_, AppStore>,
+) -> Result<store::AppState, String> {
+    log::info!("app state requested by window={}", window.label());
     let guard = state.0.lock().map_err(|e| e.to_string())?;
     Ok(guard.clone())
 }
@@ -101,6 +105,7 @@ fn open_tab_window(
     title: String,
 ) -> Result<(), String> {
     let label = format!("memo-{tab_id}");
+    log::info!("detached memo window requested: label={label}");
     if let Some(window) = app.get_webview_window(&label) {
         window.show().map_err(|e| e.to_string())?;
         window.unminimize().map_err(|e| e.to_string())?;
@@ -118,7 +123,7 @@ fn open_tab_window(
     let window = WebviewWindowBuilder::new(
         &app,
         label,
-        WebviewUrl::App(format!("index.html?tab={tab_id}").into()),
+        WebviewUrl::App("index.html".into()),
     )
     .title(format!("찰메모 · {title}"))
     .inner_size(380.0, 520.0)
@@ -132,6 +137,7 @@ fn open_tab_window(
     if let Some(icon) = app.default_window_icon() {
         let _ = window.set_icon(icon.clone());
     }
+    log::info!("detached memo window created: tab={tab_id}");
     window.set_focus().map_err(|e| e.to_string())
 }
 

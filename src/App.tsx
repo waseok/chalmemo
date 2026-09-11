@@ -28,10 +28,20 @@ function uid() {
   return crypto.randomUUID()
 }
 
-const DETACHED_TAB_ID = new URLSearchParams(window.location.search).get('tab')
+const CURRENT_WINDOW_LABEL = (() => {
+  try {
+    return getCurrentWindow().label
+  } catch {
+    return 'main'
+  }
+})()
+const DETACHED_TAB_ID = CURRENT_WINDOW_LABEL.startsWith('memo-')
+  ? CURRENT_WINDOW_LABEL.slice('memo-'.length)
+  : null
 
 export default function App() {
   const [state, setState] = useState<AppState | null>(null)
+  const [bootError, setBootError] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [showFind, setShowFind] = useState(false)
   const [showExport, setShowExport] = useState(false)
@@ -86,11 +96,11 @@ export default function App() {
 
   useEffect(() => {
     void (async () => {
-      const loaded = await invoke<AppState>('load_app_state')
-      stateRef.current = loaded
-      setState(loaded)
-      if (DETACHED_TAB_ID) return
       try {
+        const loaded = await invoke<AppState>('load_app_state')
+        stateRef.current = loaded
+        setState(loaded)
+        if (DETACHED_TAB_ID) return
         if (import.meta.env.DEV) {
           // 개발 실행을 시작프로그램에 넣으면 재부팅 때 터미널이 뜹니다.
           await disable()
@@ -110,8 +120,9 @@ export default function App() {
           downloadUrl?: string | null
         }>('check_app_update')
         if (info.available) setUpdateInfo(info)
-      } catch {
-        /* 미리보기·오프라인에서는 무시 */
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        if (!stateRef.current) setBootError(message)
       }
     })()
   }, [])
@@ -405,7 +416,7 @@ export default function App() {
   if (!state || !activeTab) {
     return (
       <div className="boot" style={{ background: '#FBF3DB', color: '#2F3437' }}>
-        불러오는 중…
+        {bootError ? `메모를 불러오지 못했습니다: ${bootError}` : '불러오는 중…'}
       </div>
     )
   }
