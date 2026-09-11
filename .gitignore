@@ -27,6 +27,7 @@ dist-ssr
 src-tauri/target
 target-agent
 src-tauri/gen
+.test-artifacts/
 
 # Local secrets / env
 .env
