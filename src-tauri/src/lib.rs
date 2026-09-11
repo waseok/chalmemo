@@ -124,6 +124,7 @@ fn open_tab_window(
     // 이벤트 루프가 서로를 기다리며 앱이 멈출 수 있습니다. 생성을 메인 루프에
     // 예약하고 현재 명령은 즉시 반환합니다.
     let app_for_window = app.clone();
+    let scheduled_tab_id = tab_id.clone();
     app.run_on_main_thread(move || {
         let result = WebviewWindowBuilder::new(
             &app_for_window,
@@ -157,7 +158,7 @@ fn open_tab_window(
         }
     })
     .map_err(|e| format!("메모 새창 열기 예약 실패: {e}"))?;
-    log::info!("detached memo window scheduled: tab={tab_id}");
+    log::info!("detached memo window scheduled: tab={scheduled_tab_id}");
     Ok(())
 }
 
