@@ -705,9 +705,9 @@ export default function App() {
           onChange={(p) => void updateSettings(p)}
           onPaperColorChange={(color) => persistTab({ ...activeTab, paperColor: color })}
           onClose={() => setShowSettings(false)}
-          onRegisterShortcut={(shortcut) => {
-            void invoke('register_shortcut', { shortcut })
-            void updateSettings({ shortcut })
+          onRegisterShortcut={(shortcut, enabled) => {
+            void invoke('register_shortcut', { shortcut, enabled })
+            void updateSettings({ shortcut, globalCapture: enabled })
           }}
           onCheckUpdate={async () => {
             const info = await invoke<{

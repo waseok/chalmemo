@@ -36,6 +36,8 @@ pub struct Settings {
     pub paper_color: String,
     pub font_size: u32,
     pub shortcut: String,
+    #[serde(default)]
+    pub global_capture: bool,
     pub capture_timestamp: bool,
     pub autostart: bool,
 }
@@ -57,8 +59,9 @@ impl Default for Settings {
             paper_color: "yellow".into(),
             font_size: 14,
             shortcut: "Ctrl+Alt+M".into(),
+            global_capture: false,
             capture_timestamp: false,
-            autostart: true,
+            autostart: false,
         }
     }
 }
@@ -85,7 +88,7 @@ impl Default for AppState {
     fn default() -> Self {
         let id = uuid::Uuid::new_v4().to_string();
         Self {
-            version: 3,
+            version: 4,
             active_tab_id: id.clone(),
             tabs: vec![Tab {
                 id,
@@ -147,8 +150,15 @@ fn migrate_state(state: &mut AppState) -> bool {
         }
         changed = true;
     }
+    if state.version < 4 {
+        // 예전 버전의 배경 캡처와 자동 실행을 끄어
+        // 보안 프로그램·화면 캡처 도구와의 충돌을 방지합니다.
+        state.settings.global_capture = false;
+        state.settings.autostart = false;
+        changed = true;
+    }
     if changed {
-        state.version = 3;
+        state.version = 4;
     }
     changed
 }
@@ -172,14 +182,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn version_one_state_migrates_to_autostart_enabled() {
+    fn legacy_state_migrates_to_safe_defaults() {
         let mut old = AppState::default();
         old.version = 1;
         old.settings.autostart = false;
 
         assert!(migrate_state(&mut old));
-        assert_eq!(old.version, 3);
-        assert!(old.settings.autostart);
+        assert_eq!(old.version, 4);
+        assert!(!old.settings.autostart);
+        assert!(!old.settings.global_capture);
     }
 
     #[test]
@@ -189,7 +200,20 @@ mod tests {
         old.tabs[0].sticky_block_index = 9;
 
         assert!(migrate_state(&mut old));
-        assert_eq!(old.version, 3);
+        assert_eq!(old.version, 4);
         assert_eq!(old.tabs[0].sticky_block_index, 0);
+    }
+
+    #[test]
+    fn version_three_state_disables_background_capture_and_autostart() {
+        let mut old = AppState::default();
+        old.version = 3;
+        old.settings.global_capture = true;
+        old.settings.autostart = true;
+
+        assert!(migrate_state(&mut old));
+        assert_eq!(old.version, 4);
+        assert!(!old.settings.global_capture);
+        assert!(!old.settings.autostart);
     }
 }

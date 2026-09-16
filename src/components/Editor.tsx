@@ -465,7 +465,15 @@ export function MemoEditor({
       ) : null}
       <div
         className="memo-scroll-host"
-        style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '10px 14px 20px' }}
+        style={{
+          flex: 1,
+          minHeight: 0,
+          minWidth: 0,
+          overflowX: 'hidden',
+          overflowY: 'scroll',
+          scrollbarGutter: 'stable',
+          padding: '10px 14px 20px',
+        }}
         onScroll={() => setContextMenu(null)}
       >
         <EditorContent editor={editor} />
@@ -516,9 +524,10 @@ export function MemoEditor({
           color: ${textColor};
           font-size: ${fontSize}px;
           line-height: 1.55;
-          font-family: "Segoe UI Variable", "Malgun Gothic", sans-serif;
+          font-family: "Malgun Gothic", "Segoe UI", sans-serif;
           caret-color: ${textColor};
-          word-break: break-word;
+          overflow-wrap: break-word;
+          word-break: normal;
         }
         .memo-editor p { margin: 0 0 0.4em; }
         .memo-pinned-header {

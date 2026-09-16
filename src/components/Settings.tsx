@@ -12,7 +12,7 @@ interface SettingsPanelProps {
   onChange: (next: Partial<Settings>) => void
   onPaperColorChange: (color: PaperColor) => void
   onClose: () => void
-  onRegisterShortcut: (shortcut: string) => void
+  onRegisterShortcut: (shortcut: string, enabled: boolean) => void
   onCheckUpdate: () => Promise<string>
 }
 
@@ -139,11 +139,21 @@ export function SettingsPanel({
       </div>
 
       <label style={rowStyle}>
-        <span>전역 단축키</span>
+        <span>복사 내용 가져오기</span>
+        <input
+          type="checkbox"
+          checked={settings.globalCapture}
+          onChange={(e) => onRegisterShortcut(settings.shortcut, e.target.checked)}
+        />
+      </label>
+
+      <label style={rowStyle}>
+        <span>단축키</span>
         <input
           value={settings.shortcut}
           onChange={(e) => onChange({ shortcut: e.target.value })}
-          onBlur={() => onRegisterShortcut(settings.shortcut)}
+          onBlur={() => onRegisterShortcut(settings.shortcut, settings.globalCapture)}
+          disabled={!settings.globalCapture}
           style={{
             width: 120,
             border: `1px solid ${border}`,
@@ -193,8 +203,9 @@ export function SettingsPanel({
       ) : null}
 
       <p style={{ fontSize: 12, color: muted, lineHeight: 1.5, marginTop: 20 }}>
-        사용법: 다른 앱에서 텍스트/이미지를 선택한 뒤 전역 단축키({settings.shortcut})를 누르거나,
-        복사 후 「붙여넣기」/트레이 「메모에 붙여넣기」를 누르세요.
+        사용법: 다른 앱에서 먼저 Ctrl+C로 복사한 뒤 「붙여넣기」나 트레이
+        「메모에 붙여넣기」를 누르세요. 단축키를 켜더라도 다른 앱에 Ctrl+C를
+        강제로 보내지 않으므로 화면 캡처 도구와 충돌하지 않습니다.
         <br />
         날짜는 왼쪽 달력 버튼으로 넣을 수 있습니다.
         <br />

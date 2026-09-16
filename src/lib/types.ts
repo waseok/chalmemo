@@ -31,6 +31,7 @@ export interface Settings {
   paperColor: PaperColor
   fontSize: number
   shortcut: string
+  globalCapture: boolean
   captureTimestamp: boolean
   autostart: boolean
 }

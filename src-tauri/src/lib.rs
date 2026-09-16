@@ -24,7 +24,7 @@ static HOTKEY_BUSY: AtomicBool = AtomicBool::new(false);
 static LAST_HOTKEY: Mutex<Option<Instant>> = Mutex::new(None);
 
 fn should_handle_hotkey(state: ShortcutState) -> bool {
-    // M 키가 올라온 시점에 작업 예약. 실제 캡처는 모든 보조키가 올라올 때까지 기다립니다.
+    // 키를 누르고 뗄 때 두 번 호출되지 않도록 Released 이벤트만 처리합니다.
     matches!(state, ShortcutState::Released)
 }
 
@@ -181,8 +181,12 @@ async fn install_app_update(app: AppHandle, url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn register_shortcut(app: AppHandle, shortcut: String) -> Result<(), String> {
+fn register_shortcut(app: AppHandle, shortcut: String, enabled: bool) -> Result<(), String> {
     let _ = app.global_shortcut().unregister_all();
+    if !enabled {
+        log::info!("global shortcut disabled");
+        return Ok(());
+    }
     let parsed: Shortcut = shortcut
         .parse()
         .map_err(|e| format!("단축키 파싱 실패: {e}"))?;
@@ -228,7 +232,7 @@ fn emit_paste_from_menu(app: &AppHandle) {
 
 fn schedule_hotkey_capture(app: AppHandle) {
     // 이벤트 콜백에서는 중복 검사와 작업 예약만 수행합니다.
-    // 클립보드 대기는 별도 스레드에서 처리해 UI 이벤트 루프를 막지 않습니다.
+    // 클립보드 읽기는 별도 스레드에서 처리해 UI 이벤트 루프를 막지 않습니다.
     if HOTKEY_BUSY.swap(true, Ordering::SeqCst) {
         return;
     }
@@ -250,11 +254,11 @@ fn schedule_hotkey_capture(app: AppHandle) {
 }
 
 fn emit_hotkey_capture(app: &AppHandle) {
-    log::info!("global shortcut callback: capture started");
+    log::info!("global shortcut callback: reading existing clipboard");
     let stamp = capture_timestamp(app);
-    let payload = match capture::capture_selection() {
+    let payload = match capture::read_clipboard_prefer_text() {
         Ok(c) => {
-            log::info!("global shortcut capture succeeded: kind={}", c.kind);
+            log::info!("global shortcut clipboard read succeeded: kind={}", c.kind);
             PastePayload {
                 kind: "hotkey".into(),
                 timestamp: stamp,
@@ -265,7 +269,7 @@ fn emit_hotkey_capture(app: &AppHandle) {
             }
         }
         Err(e) => {
-            log::error!("global shortcut capture failed: {e}");
+            log::error!("global shortcut clipboard read failed: {e}");
             PastePayload {
                 kind: "hotkey".into(),
                 timestamp: stamp,
@@ -290,13 +294,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn global_shortcut_runs_after_modifiers_are_released() {
+    fn global_shortcut_runs_once_on_key_release() {
         assert!(!should_handle_hotkey(ShortcutState::Pressed));
         assert!(should_handle_hotkey(ShortcutState::Released));
     }
 
     #[test]
-    fn capture_work_is_dispatched_without_blocking_shortcut_callback() {
+    fn clipboard_work_is_dispatched_without_blocking_shortcut_callback() {
         let (tx, rx) = std::sync::mpsc::channel();
         let started = Instant::now();
 
@@ -317,6 +321,7 @@ mod tests {
 pub fn run() {
     let initial = store::load_state().unwrap_or_default();
     let initial_shortcut = initial.settings.shortcut.clone();
+    let initial_global_capture = initial.settings.global_capture;
     let start_hidden = std::env::args().any(|arg| arg == "--hidden");
 
     tauri::Builder::default()
@@ -414,23 +419,28 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            // 설정에 저장된 전역 단축키 등록
+            // 기본은 끄짐입니다. 켜더라도 다른 앱에 키를 보내지 않고
+            // 사용자가 이미 복사한 클립보드만 읽습니다.
             let parsed: Result<Shortcut, _> = initial_shortcut.parse();
-            if let Ok(shortcut) = parsed {
-                let handle = app.handle().clone();
-                match app.global_shortcut().on_shortcut(shortcut, move |_app, _, event| {
-                    log::info!("global shortcut event: state={:?}", event.state);
-                    if should_handle_hotkey(event.state) {
-                        schedule_hotkey_capture(handle.clone());
+            if initial_global_capture {
+                if let Ok(shortcut) = parsed {
+                    let handle = app.handle().clone();
+                    match app.global_shortcut().on_shortcut(shortcut, move |_app, _, event| {
+                        log::info!("global shortcut event: state={:?}", event.state);
+                        if should_handle_hotkey(event.state) {
+                            schedule_hotkey_capture(handle.clone());
+                        }
+                    }) {
+                        Ok(()) => log::info!("global shortcut registered: {initial_shortcut}"),
+                        Err(e) => log::error!(
+                            "global shortcut registration failed ({initial_shortcut}): {e}"
+                        ),
                     }
-                }) {
-                    Ok(()) => log::info!("global shortcut registered: {initial_shortcut}"),
-                    Err(e) => log::error!(
-                        "global shortcut registration failed ({initial_shortcut}): {e}"
-                    ),
+                } else {
+                    log::error!("global shortcut parse failed: {initial_shortcut}");
                 }
             } else {
-                log::error!("global shortcut parse failed: {initial_shortcut}");
+                log::info!("global shortcut disabled by safe compatibility mode");
             }
 
             Ok(())
