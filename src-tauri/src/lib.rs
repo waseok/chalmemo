@@ -27,6 +27,13 @@ struct PastePayload {
     error: Option<String>,
 }
 
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppStateChangedPayload {
+    source_window_label: String,
+    state: store::AppState,
+}
+
 #[tauri::command]
 fn load_app_state(
     window: WebviewWindow,
@@ -40,6 +47,7 @@ fn load_app_state(
 #[tauri::command]
 fn save_app_state(
     app: AppHandle,
+    window: WebviewWindow,
     state: State<'_, AppStore>,
     data: store::AppState,
 ) -> Result<(), String> {
@@ -47,13 +55,20 @@ fn save_app_state(
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     *guard = data.clone();
     drop(guard);
-    let _ = app.emit("app-state-changed", data);
+    let _ = app.emit(
+        "app-state-changed",
+        AppStateChangedPayload {
+            source_window_label: window.label().to_string(),
+            state: data,
+        },
+    );
     Ok(())
 }
 
 #[tauri::command]
 fn save_tab_state(
     app: AppHandle,
+    window: WebviewWindow,
     state: State<'_, AppStore>,
     tab: store::Tab,
 ) -> Result<(), String> {
@@ -66,7 +81,13 @@ fn save_tab_state(
     store::save_state(&next)?;
     *guard = next.clone();
     drop(guard);
-    let _ = app.emit("app-state-changed", next);
+    let _ = app.emit(
+        "app-state-changed",
+        AppStateChangedPayload {
+            source_window_label: window.label().to_string(),
+            state: next,
+        },
+    );
     Ok(())
 }
 

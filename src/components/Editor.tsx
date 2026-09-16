@@ -74,6 +74,7 @@ export function MemoEditor({
 }: EditorProps) {
   const composing = useRef(false)
   const spaceStreak = useRef(0)
+  const recentLocalSnapshots = useRef<string[]>([])
   const stickyIndexRef = useRef(stickyBlockIndex)
   const onStickyChangeRef = useRef(onStickyChange)
   const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null)
@@ -258,7 +259,11 @@ export function MemoEditor({
         ed.commands.insertContentAt(ed.state.doc.content.size, { type: 'paragraph' })
         return
       }
-      onChange(ed.getJSON() as Record<string, unknown>)
+      const next = ed.getJSON() as Record<string, unknown>
+      const snapshot = JSON.stringify(next)
+      recentLocalSnapshots.current.push(snapshot)
+      if (recentLocalSnapshots.current.length > 32) recentLocalSnapshots.current.shift()
+      onChange(next)
     },
   })
 
@@ -293,10 +298,16 @@ export function MemoEditor({
     if (!editor) return
     const current = JSON.stringify(editor.getJSON())
     const next = JSON.stringify(content)
-    if (current !== next) {
-      editor.commands.setContent(content as JSONContent, { emitUpdate: false })
-      requestAnimationFrame(syncPinnedPreview)
-    }
+    if (current === next) return
+
+    // 저장 응답이나 다른 상태 변경이 과거의 로컬 문서를 되돌려 보내도
+    // 편집 DOM을 다시 만들지 않습니다. 특히 한글 조합 중 setContent가
+    // 실행되면 커서가 이동하거나 의도하지 않은 문단이 생길 수 있습니다.
+    if (recentLocalSnapshots.current.includes(next)) return
+    if (editor.isFocused || composing.current) return
+
+    editor.commands.setContent(content as JSONContent, { emitUpdate: false })
+    requestAnimationFrame(syncPinnedPreview)
   }, [content, editor, syncPinnedPreview])
 
   useEffect(() => {

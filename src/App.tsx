@@ -194,10 +194,13 @@ export default function App() {
   useEffect(() => {
     let alive = true
     let unlisten: (() => void) | undefined
-    void listen<AppState>('app-state-changed', (event) => {
+    void listen<{ sourceWindowLabel: string; state: AppState }>('app-state-changed', (event) => {
       if (!alive) return
-      stateRef.current = event.payload
-      setState(event.payload)
+      // 저장을 요청한 창은 이미 최신 상태입니다. 같은 내용을 400ms 뒤 다시
+      // 주입하면 IME 조합과 커서가 흔들릴 수 있으므로 다른 창의 변경만 받습니다.
+      if (event.payload.sourceWindowLabel === CURRENT_WINDOW_LABEL) return
+      stateRef.current = event.payload.state
+      setState(event.payload.state)
     }).then((fn) => {
       if (!alive) fn()
       else unlisten = fn
