@@ -181,15 +181,9 @@ export default function App() {
             else await disable()
           }
         }
-        // 설치된 0.1.0은 검사 기능이 없습니다. 이 버전부터 GitHub 새 릴리스를 확인합니다.
-        const info = await invoke<{
-          available: boolean
-          currentVersion: string
-          latestVersion: string
-          notes: string
-          downloadUrl?: string | null
-        }>('check_app_update')
-        if (info.available) setUpdateInfo(info)
+        // 서명되지 않은 앱이 시작하자마자 인터넷에 접속하면 V3 같은 보안
+        // 프로그램이 실행을 가로막을 수 있습니다. 업데이트는 설정에서
+        // 사용자가 「지금 확인」을 눌렀을 때만 조회합니다.
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         if (!stateRef.current) setBootError(message)
@@ -705,10 +699,6 @@ export default function App() {
           onChange={(p) => void updateSettings(p)}
           onPaperColorChange={(color) => persistTab({ ...activeTab, paperColor: color })}
           onClose={() => setShowSettings(false)}
-          onRegisterShortcut={(shortcut, enabled) => {
-            void invoke('register_shortcut', { shortcut, enabled })
-            void updateSettings({ shortcut, globalCapture: enabled })
-          }}
           onCheckUpdate={async () => {
             const info = await invoke<{
               available: boolean

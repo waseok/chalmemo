@@ -12,7 +12,6 @@ interface SettingsPanelProps {
   onChange: (next: Partial<Settings>) => void
   onPaperColorChange: (color: PaperColor) => void
   onClose: () => void
-  onRegisterShortcut: (shortcut: string, enabled: boolean) => void
   onCheckUpdate: () => Promise<string>
 }
 
@@ -43,7 +42,6 @@ export function SettingsPanel({
   onChange,
   onPaperColorChange,
   onClose,
-  onRegisterShortcut,
   onCheckUpdate,
 }: SettingsPanelProps) {
   const [updateMsg, setUpdateMsg] = useState('')
@@ -139,33 +137,6 @@ export function SettingsPanel({
       </div>
 
       <label style={rowStyle}>
-        <span>복사 내용 가져오기</span>
-        <input
-          type="checkbox"
-          checked={settings.globalCapture}
-          onChange={(e) => onRegisterShortcut(settings.shortcut, e.target.checked)}
-        />
-      </label>
-
-      <label style={rowStyle}>
-        <span>단축키</span>
-        <input
-          value={settings.shortcut}
-          onChange={(e) => onChange({ shortcut: e.target.value })}
-          onBlur={() => onRegisterShortcut(settings.shortcut, settings.globalCapture)}
-          disabled={!settings.globalCapture}
-          style={{
-            width: 120,
-            border: `1px solid ${border}`,
-            borderRadius: 4,
-            padding: '4px 8px',
-            background: 'transparent',
-            color: text,
-          }}
-        />
-      </label>
-
-      <label style={rowStyle}>
         <span>Windows 시작 시 실행</span>
         <input
           type="checkbox"
@@ -204,14 +175,16 @@ export function SettingsPanel({
 
       <p style={{ fontSize: 12, color: muted, lineHeight: 1.5, marginTop: 20 }}>
         사용법: 다른 앱에서 먼저 Ctrl+C로 복사한 뒤 「붙여넣기」나 트레이
-        「메모에 붙여넣기」를 누르세요. 단축키를 켜더라도 다른 앱에 Ctrl+C를
-        강제로 보내지 않으므로 화면 캡처 도구와 충돌하지 않습니다.
+        「메모에 붙여넣기」를 누르세요. 화면 캡처 프로그램과 충돌하지 않도록
+        전역 단축키는 사용하지 않습니다.
         <br />
         날짜는 왼쪽 달력 버튼으로 넣을 수 있습니다.
         <br />
         계산: <code>23*5=</code> 입력 후 스페이스를 두 번 누르면 결과가 붙습니다.
         <br />
         개발 모드에서는 Windows 시작 등록을 하지 않습니다. 재부팅 때 터미널이 뜨던 원인입니다.
+        <br />
+        보안 프로그램의 실행 차단을 피하기 위해 업데이트는 자동 조회하지 않고 「지금 확인」을 눌렀을 때만 확인합니다.
         <br />
         Ctrl+마우스 휠로 글자 크기를 바꿀 수 있습니다.
         <br />
