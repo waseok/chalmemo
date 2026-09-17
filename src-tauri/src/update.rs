@@ -37,6 +37,7 @@ struct GithubRelease {
 #[derive(Deserialize)]
 struct GithubAsset {
     name: String,
+    browser_download_url: String,
 }
 
 fn normalize_version(value: &str) -> String {
@@ -83,6 +84,34 @@ fn mirror_download_url(version: &str) -> String {
     )
 }
 
+fn release_download_url(version: &str) -> String {
+    let version = normalize_version(version);
+    format!(
+        "https://github.com/waseok/chalmemo/releases/download/v{version}/chalmemo_{version}_x64-setup.exe"
+    )
+}
+
+fn installer_download_urls(value: &str) -> Result<Vec<String>, String> {
+    validate_download_url(value)?;
+    let url = Url::parse(value).map_err(|e| format!("설치 파일 주소 오류: {e}"))?;
+    let filename = url
+        .path_segments()
+        .and_then(|segments| segments.last())
+        .ok_or("설치 파일 이름을 확인할 수 없습니다.")?;
+    let version = filename
+        .strip_prefix("chalmemo_")
+        .and_then(|name| name.strip_suffix("_x64-setup.exe"))
+        .ok_or("설치 파일 버전을 확인할 수 없습니다.")?;
+    let release = release_download_url(version);
+    let mirror = mirror_download_url(version);
+
+    if url.host_str() == Some("github.com") {
+        Ok(vec![value.to_string(), mirror])
+    } else {
+        Ok(vec![release, value.to_string()])
+    }
+}
+
 fn request_error(context: &str, error: reqwest::Error) -> String {
     let mut message = format!("{context}: {error}");
     let mut source = error.source();
@@ -109,7 +138,7 @@ pub fn check() -> Result<UpdateInfo, String> {
 
     let latest = normalize_version(&release.tag_name);
     // 한글 productName 설치 파일보다 ASCII(chalmemo_*)를 우선합니다.
-    let has_windows_installer = release
+    let windows_installer = release
         .assets
         .iter()
         .find(|a| {
@@ -121,12 +150,12 @@ pub fn check() -> Result<UpdateInfo, String> {
                 .assets
                 .iter()
                 .find(|a| a.name.to_ascii_lowercase().ends_with("setup.exe"))
-        })
-        .is_some();
+        });
 
-    // 학교·기관 네트워크에서 GitHub release-assets CDN 연결이 끊기는 경우가 있습니다.
-    // 릴리스 워크플로가 같은 설치 파일을 raw.githubusercontent.com에도 게시합니다.
-    let download_url = has_windows_installer.then(|| mirror_download_url(&latest));
+    // 현재 학교망에서는 raw.githubusercontent.com이 차단되고 GitHub 릴리스 자산은
+    // 정상 다운로드됩니다. 실제 릴리스 자산 주소를 우선하고 raw 미러는 설치 단계의
+    // 보조 경로로만 사용합니다.
+    let download_url = windows_installer.map(|asset| asset.browser_download_url.clone());
 
     Ok(UpdateInfo {
         available: version_newer(&latest, &current) && download_url.is_some(),
@@ -359,16 +388,37 @@ fn run_installer(path: &Path) -> Result<(), String> {
 }
 
 pub fn download_and_run_installer(app: &AppHandle, url: &str) -> Result<(), String> {
-    validate_download_url(url)?;
+    let urls = installer_download_urls(url)?;
     let path = installer_path();
-    if let Err(error) = download_installer(url, &path) {
-        log::error!("updater: installer download failed: {error}");
+    let mut errors = Vec::new();
+    let mut downloaded = false;
+    for candidate in &urls {
+        log::info!("updater: trying installer source={candidate}");
+        match download_installer(candidate, &path) {
+            Ok(()) => {
+                downloaded = true;
+                break;
+            }
+            Err(error) => {
+                log::warn!("updater: installer source failed: {error}");
+                errors.push(error);
+            }
+        }
+    }
+
+    if !downloaded {
+        let error = errors.join(" / 다른 주소 다운로드 실패: ");
+        log::error!("updater: every installer source failed: {error}");
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            let browser_url = urls
+                .iter()
+                .find(|candidate| candidate.starts_with("https://github.com/"))
+                .unwrap_or(&urls[0]);
             if Command::new("explorer.exe")
-                .arg(url)
+                .arg(browser_url)
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn()
                 .is_ok()
@@ -435,5 +485,18 @@ mod tests {
             "https://raw.githubusercontent.com/other/project/updater/chalmemo_0.1.10_x64-setup.exe"
         )
         .is_err());
+    }
+
+    #[test]
+    fn prefers_github_release_and_keeps_raw_as_fallback() {
+        let urls = installer_download_urls(
+            "https://raw.githubusercontent.com/waseok/chalmemo/updater/chalmemo_0.1.26_x64-setup.exe",
+        )
+        .unwrap();
+        assert_eq!(
+            urls[0],
+            "https://github.com/waseok/chalmemo/releases/download/v0.1.26/chalmemo_0.1.26_x64-setup.exe"
+        );
+        assert!(urls[1].starts_with("https://raw.githubusercontent.com/"));
     }
 }
