@@ -539,7 +539,7 @@ dependencies = [
 
 [[package]]
 name = "chalmemo"
-version = "0.1.25"
+version = "0.1.26"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -565,6 +565,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "url",
  "uuid",
+ "windows",
 ]
 
 [[package]]

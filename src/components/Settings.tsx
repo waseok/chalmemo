@@ -174,8 +174,8 @@ export function SettingsPanel({
       ) : null}
 
       <p style={{ fontSize: 12, color: muted, lineHeight: 1.5, marginTop: 20 }}>
-        사용법: 다른 앱에서 먼저 Ctrl+C로 복사한 뒤 Ctrl+Alt+M을 누르면 현재 메모에
-        바로 들어옵니다. 같은 기능을 「붙여넣기」나 트레이 메뉴에서도 사용할 수 있습니다.
+        사용법: 다른 앱에서 내용을 선택한 뒤 Ctrl+Alt+M을 한 번 누르면 현재 메모에
+        바로 들어옵니다. 기존 클립보드는 「붙여넣기」나 트레이 메뉴로 넣을 수 있습니다.
         <br />
         날짜는 왼쪽 달력 버튼으로 넣을 수 있습니다.
         <br />

@@ -241,8 +241,28 @@ fn schedule_quick_memo(app: AppHandle) {
     }
 
     std::thread::spawn(move || {
-        log::info!("Ctrl+Alt+M: reading existing clipboard");
-        emit_clipboard_paste(&app, "hotkey");
+        log::info!("Ctrl+Alt+M: copying foreground selection");
+        let stamp = capture_timestamp(&app);
+        let payload = match capture::capture_selection() {
+            Ok(content) => PastePayload {
+                kind: "hotkey".into(),
+                timestamp: stamp,
+                content_kind: Some(content.kind),
+                text: content.text,
+                image_base64: content.image_base64,
+                error: None,
+            },
+            Err(error) => PastePayload {
+                kind: "hotkey".into(),
+                timestamp: stamp,
+                content_kind: None,
+                text: None,
+                image_base64: None,
+                error: Some(error),
+            },
+        };
+        let _ = app.emit("memo-paste-request", payload);
+        let _ = activate_main_window(&app);
         QUICK_MEMO_BUSY.store(false, Ordering::SeqCst);
     });
 }

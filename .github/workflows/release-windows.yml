@@ -43,9 +43,11 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: '찰메모 v__VERSION__'
           releaseBody: |
-            빠른 메모 단축키 Ctrl+Alt+M을 다시 추가했습니다.
+            선택한 내용을 Ctrl+Alt+M 한 번으로 바로 메모에 넣습니다.
 
-            - 다른 앱에서 복사 후 Ctrl+Alt+M으로 현재 메모에 바로 삽입
+            - 다른 앱에서 내용 선택 후 Ctrl+Alt+M 한 번으로 현재 메모에 바로 삽입
+            - 단축키를 누른 순간에만 선택 내용을 자동 복사
+            - 기존 클립보드를 미리 지우지 않고 Windows 변경 번호로 복사 성공 확인
             - 다른 화면 캡처 단축키와 겹치지 않도록 단축키 하나만 고정 등록
             - 저장한 내용을 같은 창에 다시 주입하던 동작 제거
             - 한글 조합·타이핑 중 편집기 본문 재생성 방지
