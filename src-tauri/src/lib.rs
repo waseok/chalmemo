@@ -3,7 +3,9 @@ mod link_metadata;
 mod store;
 mod update;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use base64::Engine;
 use serde::Serialize;
@@ -13,8 +15,13 @@ use tauri::{
     AppHandle, Emitter, Manager, State, WebviewWindow, WindowEvent,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 struct AppStore(Mutex<store::AppState>);
+
+const QUICK_MEMO_SHORTCUT: &str = "Ctrl+Alt+M";
+static QUICK_MEMO_BUSY: AtomicBool = AtomicBool::new(false);
+static LAST_QUICK_MEMO: Mutex<Option<Instant>> = Mutex::new(None);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -188,11 +195,11 @@ fn capture_timestamp(app: &AppHandle) -> bool {
         .unwrap_or(true)
 }
 
-fn emit_paste_from_menu(app: &AppHandle) {
+fn emit_clipboard_paste(app: &AppHandle, kind: &str) {
     let stamp = capture_timestamp(app);
     let payload = match capture::read_clipboard_prefer_text() {
         Ok(c) => PastePayload {
-            kind: "clipboard".into(),
+            kind: kind.into(),
             timestamp: stamp,
             content_kind: Some(c.kind),
             text: c.text,
@@ -200,7 +207,7 @@ fn emit_paste_from_menu(app: &AppHandle) {
             error: None,
         },
         Err(e) => PastePayload {
-            kind: "clipboard".into(),
+            kind: kind.into(),
             timestamp: stamp,
             content_kind: None,
             text: None,
@@ -210,6 +217,34 @@ fn emit_paste_from_menu(app: &AppHandle) {
     };
     let _ = app.emit("memo-paste-request", payload);
     let _ = activate_main_window(app);
+}
+
+fn should_handle_quick_memo(state: ShortcutState) -> bool {
+    matches!(state, ShortcutState::Released)
+}
+
+fn schedule_quick_memo(app: AppHandle) {
+    if QUICK_MEMO_BUSY.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    {
+        let mut last = LAST_QUICK_MEMO.lock().unwrap_or_else(|e| e.into_inner());
+        if last
+            .as_ref()
+            .is_some_and(|instant| instant.elapsed() < Duration::from_millis(250))
+        {
+            QUICK_MEMO_BUSY.store(false, Ordering::SeqCst);
+            return;
+        }
+        *last = Some(Instant::now());
+    }
+
+    std::thread::spawn(move || {
+        log::info!("Ctrl+Alt+M: reading existing clipboard");
+        emit_clipboard_paste(&app, "hotkey");
+        QUICK_MEMO_BUSY.store(false, Ordering::SeqCst);
+    });
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -236,6 +271,7 @@ pub fn run() {
             MacosLauncher::LaunchAgent,
             Some(vec!["--hidden"]),
         ))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(AppStore(Mutex::new(initial.clone())))
         .invoke_handler(tauri::generate_handler![
             load_app_state,
@@ -278,8 +314,13 @@ pub fn run() {
                 }
             }
 
-            let paste_i =
-                MenuItem::with_id(app, "paste", "메모에 붙여넣기", true, None::<&str>)?;
+            let paste_i = MenuItem::with_id(
+                app,
+                "paste",
+                "메모에 붙여넣기 (Ctrl+Alt+M)",
+                true,
+                None::<&str>,
+            )?;
             let show_i = MenuItem::with_id(app, "show", "열기", true, None::<&str>)?;
             let quit_i = MenuItem::with_id(app, "quit", "종료", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&paste_i, &show_i, &quit_i])?;
@@ -290,7 +331,7 @@ pub fn run() {
                 .show_menu_on_left_click(false)
                 .tooltip("찰메모")
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "paste" => emit_paste_from_menu(app),
+                    "paste" => emit_clipboard_paste(app, "clipboard"),
                     "show" => {
                         let _ = activate_main_window(app);
                     }
@@ -310,7 +351,29 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            log::info!("safe compatibility mode: no startup network or global shortcut");
+            match QUICK_MEMO_SHORTCUT.parse::<Shortcut>() {
+                Ok(shortcut) => {
+                    let handle = app.handle().clone();
+                    match app.global_shortcut().on_shortcut(
+                        shortcut,
+                        move |_app, _shortcut, event| {
+                            if should_handle_quick_memo(event.state) {
+                                schedule_quick_memo(handle.clone());
+                            }
+                        },
+                    ) {
+                        Ok(()) => log::info!("quick memo shortcut registered: {QUICK_MEMO_SHORTCUT}"),
+                        Err(error) => log::error!(
+                            "quick memo shortcut registration failed ({QUICK_MEMO_SHORTCUT}): {error}"
+                        ),
+                    }
+                }
+                Err(error) => log::error!(
+                    "quick memo shortcut parse failed ({QUICK_MEMO_SHORTCUT}): {error}"
+                ),
+            }
+
+            log::info!("compatibility mode: no startup network; Ctrl+Alt+M shortcut only");
 
             Ok(())
         })
@@ -324,4 +387,15 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quick_memo_runs_once_on_key_release() {
+        assert!(!should_handle_quick_memo(ShortcutState::Pressed));
+        assert!(should_handle_quick_memo(ShortcutState::Released));
+    }
 }

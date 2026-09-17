@@ -174,9 +174,8 @@ export function SettingsPanel({
       ) : null}
 
       <p style={{ fontSize: 12, color: muted, lineHeight: 1.5, marginTop: 20 }}>
-        사용법: 다른 앱에서 먼저 Ctrl+C로 복사한 뒤 「붙여넣기」나 트레이
-        「메모에 붙여넣기」를 누르세요. 화면 캡처 프로그램과 충돌하지 않도록
-        전역 단축키는 사용하지 않습니다.
+        사용법: 다른 앱에서 먼저 Ctrl+C로 복사한 뒤 Ctrl+Alt+M을 누르면 현재 메모에
+        바로 들어옵니다. 같은 기능을 「붙여넣기」나 트레이 메뉴에서도 사용할 수 있습니다.
         <br />
         날짜는 왼쪽 달력 버튼으로 넣을 수 있습니다.
         <br />

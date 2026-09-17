@@ -1,6 +1,6 @@
 [package]
 name = "chalmemo"
-version = "0.1.24"
+version = "0.1.25"
 description = "찰메모 — Windows sticky tab memo"
 authors = ["waseok"]
 edition = "2021"
@@ -24,6 +24,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-opener = "2"
 uuid = { version = "1", features = ["v4"] }

@@ -43,14 +43,14 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: '찰메모 v__VERSION__'
           releaseBody: |
-            입력 중이거나 잠시 뒤 본문이 저절로 줄바꿈되는 문제를 수정했습니다.
+            빠른 메모 단축키 Ctrl+Alt+M을 다시 추가했습니다.
 
+            - 다른 앱에서 복사 후 Ctrl+Alt+M으로 현재 메모에 바로 삽입
+            - 다른 화면 캡처 단축키와 겹치지 않도록 단축키 하나만 고정 등록
             - 저장한 내용을 같은 창에 다시 주입하던 동작 제거
             - 한글 조합·타이핑 중 편집기 본문 재생성 방지
             - 앱 시작 시 GitHub 자동 접속 제거
             - 업데이트는 설정의 「지금 확인」을 눌렀을 때만 조회
-            - 전역 단축키 플러그인과 권한을 앱에서 완전 제거
-            - PicPick 등 화면 캡처 프로그램의 단축키 선점 방지
             - GitHub 릴리스 CDN이 막힌 환경을 위한 전용 업데이터 미러
             - Windows curl 우선 다운로드와 브라우저 다운로드 대체 경로
           releaseDraft: true
