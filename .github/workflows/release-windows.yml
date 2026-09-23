@@ -43,8 +43,12 @@ jobs:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
           releaseName: '찰메모 v__VERSION__'
           releaseBody: |
-            학교망에서 자동 업데이트가 막히던 다운로드 경로를 수정했습니다.
+            붙여넣은 링크를 클릭해도 열리지 않던 문제를 수정했습니다.
 
+            - 링크 카드를 클릭하면 Windows 기본 브라우저로 열기
+            - 본문에 자동 인식된 링크를 한 번 클릭해 열기
+            - 상단 고정 문단 안의 링크도 클릭해 열기
+            - 편집기의 선택 동작이 링크 카드 클릭을 가로채지 않도록 수정
             - GitHub 릴리스 설치 파일 주소를 자동 업데이트의 1순위로 사용
             - raw.githubusercontent.com 주소는 실패 시 보조 경로로 사용
             - 모든 자동 경로 실패 시에도 브라우저는 GitHub 릴리스 주소로 열기

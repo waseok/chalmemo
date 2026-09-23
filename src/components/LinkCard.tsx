@@ -1,7 +1,7 @@
 /* oxlint-disable react/only-export-components */
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { Node, mergeAttributes } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
+import { openExternalUrlInBackground } from '../lib/externalLink'
 
 /** oEmbed 등에서 이스케이프가 남은 제목을 사람이 읽을 수 있는 글자로 바꿉니다. */
 export function decodeLinkTitle(value: string): string {
@@ -20,13 +20,24 @@ function LinkCardView({ node, selected, deleteNode }: NodeViewProps) {
   const domain = String(node.attrs.domain ?? '')
 
   return (
-    <NodeViewWrapper className={`memo-link-card${selected ? ' is-selected' : ''}`}>
+    <NodeViewWrapper
+      className={`memo-link-card${selected ? ' is-selected' : ''}`}
+      contentEditable={false}
+    >
       <div className="memo-link-card-row">
         <button
           type="button"
           className="memo-link-card-button"
           title={href}
-          onClick={() => void openUrl(href)}
+          onMouseDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
+          onClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            openExternalUrlInBackground(href)
+          }}
         >
           <span className="memo-link-card-title">{title}</span>
           <span className="memo-link-card-domain">{domain}</span>
@@ -40,6 +51,10 @@ function LinkCardView({ node, selected, deleteNode }: NodeViewProps) {
           className="memo-link-card-remove"
           title="링크 삭제"
           aria-label="링크 삭제"
+          onMouseDown={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
           onClick={(event) => {
             event.preventDefault()
             event.stopPropagation()

@@ -5,12 +5,15 @@ import TaskItem from '@tiptap/extension-task-item'
 import TaskList from '@tiptap/extension-task-list'
 import { EditorContent, useEditor, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { invoke } from '@tauri-apps/api/core'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { tryEvaluateBeforeEquals } from '../lib/calc'
 import { contentFromPlainTextWithTables } from '../lib/tablePaste'
 import { toPlainText } from '../lib/export'
+import {
+  externalUrlFromTarget,
+  openExternalUrlInBackground,
+} from '../lib/externalLink'
 import {
   extractSingleUrl,
   resolveLinkMetadata,
@@ -54,6 +57,16 @@ interface EditorContextMenu {
   x: number
   y: number
   blockIndex: number
+}
+
+function openLinkFromEvent(event: MouseEvent | ReactMouseEvent): boolean {
+  const href = externalUrlFromTarget(event.target)
+  if (!href) return false
+
+  event.preventDefault()
+  event.stopPropagation()
+  openExternalUrlInBackground(href)
+  return true
 }
 
 function todayLabel() {
@@ -159,16 +172,6 @@ export function MemoEditor({
         spaceStreak.current = 0
         return false
       },
-      handleClick: (_view, _pos, event) => {
-        const target = event.target as HTMLElement
-        const anchor = target.closest('a')
-        if (anchor?.href) {
-          event.preventDefault()
-          void openUrl(anchor.href)
-          return true
-        }
-        return false
-      },
       handlePaste: (_view, event) => {
         const html = event.clipboardData?.getData('text/html') ?? ''
         const plain = event.clipboardData?.getData('text/plain') ?? ''
@@ -232,6 +235,7 @@ export function MemoEditor({
         return false
       },
       handleDOMEvents: {
+        click: (_view, event) => openLinkFromEvent(event),
         contextmenu: (view, event) => {
           const mouseEvent = event as MouseEvent
           const position = view.posAtCoords({ left: mouseEvent.clientX, top: mouseEvent.clientY })
@@ -469,7 +473,9 @@ export function MemoEditor({
           </div>
           <div
             className="memo-editor memo-pinned-preview"
-            onClick={(event) => event.preventDefault()}
+            onClick={(event) => {
+              openLinkFromEvent(event)
+            }}
             dangerouslySetInnerHTML={{ __html: pinnedPreview }}
           />
         </div>
