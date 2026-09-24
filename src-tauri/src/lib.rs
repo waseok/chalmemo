@@ -16,6 +16,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_opener::OpenerExt;
 
 struct AppStore(Mutex<store::AppState>);
 
@@ -103,6 +104,31 @@ fn set_always_on_top(window: WebviewWindow, enabled: bool) -> Result<(), String>
     window
         .set_always_on_top(enabled)
         .map_err(|e| e.to_string())
+}
+
+fn validated_external_url(value: &str) -> Result<url::Url, String> {
+    let parsed = url::Url::parse(value.trim()).map_err(|_| "올바른 링크가 아닙니다.".to_string())?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(parsed),
+        _ => Err("http 또는 https 링크만 열 수 있습니다.".into()),
+    }
+}
+
+#[tauri::command]
+fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    let parsed = validated_external_url(&url)?;
+    log::info!("external link open requested: scheme={}", parsed.scheme());
+
+    match app.opener().open_url(parsed.as_str(), None::<&str>) {
+        Ok(()) => {
+            log::info!("external link open succeeded");
+            Ok(())
+        }
+        Err(error) => {
+            log::error!("external link open failed: {error}");
+            Err(format!("기본 브라우저를 열지 못했습니다: {error}"))
+        }
+    }
 }
 
 #[tauri::command]
@@ -298,6 +324,7 @@ pub fn run() {
             save_app_state,
             save_tab_state,
             set_always_on_top,
+            open_external_url,
             set_window_opacity,
             save_image_bytes,
             fetch_link_metadata,
@@ -417,5 +444,18 @@ mod tests {
     fn quick_memo_runs_once_on_key_release() {
         assert!(!should_handle_quick_memo(ShortcutState::Pressed));
         assert!(should_handle_quick_memo(ShortcutState::Released));
+    }
+
+    #[test]
+    fn external_links_allow_http_and_https() {
+        assert!(validated_external_url("https://example.com/path?q=1").is_ok());
+        assert!(validated_external_url("http://example.com").is_ok());
+    }
+
+    #[test]
+    fn external_links_reject_other_schemes() {
+        assert!(validated_external_url("file:///C:/Windows/System32").is_err());
+        assert!(validated_external_url("javascript:alert(1)").is_err());
+        assert!(validated_external_url("not a url").is_err());
     }
 }

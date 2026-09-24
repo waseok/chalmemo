@@ -1,4 +1,4 @@
-import { openUrl } from '@tauri-apps/plugin-opener'
+import { invoke } from '@tauri-apps/api/core'
 
 /** 붙여넣은 링크를 Windows 기본 브라우저로 열 수 있는 안전한 URL로 정규화합니다. */
 export function normalizeExternalUrl(value: string): string {
@@ -14,12 +14,13 @@ export function normalizeExternalUrl(value: string): string {
 }
 
 export async function openExternalUrl(value: string): Promise<void> {
-  await openUrl(normalizeExternalUrl(value))
+  await invoke('open_external_url', { url: normalizeExternalUrl(value) })
 }
 
 export function openExternalUrlInBackground(value: string): void {
   void openExternalUrl(value).catch((error: unknown) => {
     console.error('링크 열기 실패:', error)
+    window.alert(`링크를 열지 못했습니다.\n${String(error)}`)
   })
 }
 
