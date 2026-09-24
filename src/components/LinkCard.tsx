@@ -1,7 +1,6 @@
 /* oxlint-disable react/only-export-components */
 import { Node, mergeAttributes } from '@tiptap/core'
 import { NodeViewWrapper, ReactNodeViewRenderer, type NodeViewProps } from '@tiptap/react'
-import { openExternalUrlInBackground } from '../lib/externalLink'
 
 /** oEmbed 등에서 이스케이프가 남은 제목을 사람이 읽을 수 있는 글자로 바꿉니다. */
 export function decodeLinkTitle(value: string): string {
@@ -29,14 +28,10 @@ function LinkCardView({ node, selected, deleteNode }: NodeViewProps) {
           type="button"
           className="memo-link-card-button"
           title={href}
+          data-external-url={href}
           onMouseDown={(event) => {
             event.preventDefault()
             event.stopPropagation()
-          }}
-          onClick={(event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            openExternalUrlInBackground(href)
           }}
         >
           <span className="memo-link-card-title">{title}</span>

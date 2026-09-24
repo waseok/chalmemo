@@ -235,7 +235,6 @@ export function MemoEditor({
         return false
       },
       handleDOMEvents: {
-        click: (_view, event) => openLinkFromEvent(event),
         contextmenu: (view, event) => {
           const mouseEvent = event as MouseEvent
           const position = view.posAtCoords({ left: mouseEvent.clientX, top: mouseEvent.clientY })
@@ -458,6 +457,9 @@ export function MemoEditor({
     <div
       className="memo-editor-shell"
       style={{ display: 'flex', flex: 1, minHeight: 0, flexDirection: 'column' }}
+      onClickCapture={(event) => {
+        openLinkFromEvent(event)
+      }}
     >
       {pinnedPreview ? (
         <div
@@ -473,9 +475,6 @@ export function MemoEditor({
           </div>
           <div
             className="memo-editor memo-pinned-preview"
-            onClick={(event) => {
-              openLinkFromEvent(event)
-            }}
             dangerouslySetInnerHTML={{ __html: pinnedPreview }}
           />
         </div>

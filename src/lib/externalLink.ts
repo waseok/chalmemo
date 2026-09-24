@@ -26,6 +26,6 @@ export function openExternalUrlInBackground(value: string): void {
 
 export function externalUrlFromTarget(target: EventTarget | null): string | null {
   if (!(target instanceof Element)) return null
-  const anchor = target.closest<HTMLAnchorElement>('a[href]')
-  return anchor?.getAttribute('href') ?? null
+  const linkTarget = target.closest<HTMLElement>('a[href], [data-external-url]')
+  return linkTarget?.dataset.externalUrl ?? linkTarget?.getAttribute('href') ?? null
 }
