@@ -6,6 +6,7 @@ import TaskList from '@tiptap/extension-task-list'
 import { EditorContent, useEditor, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { invoke } from '@tauri-apps/api/core'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { tryEvaluateBeforeEquals } from '../lib/calc'
 import { contentFromPlainTextWithTables } from '../lib/tablePaste'
@@ -16,6 +17,8 @@ import {
 } from '../lib/externalLink'
 import {
   extractSingleUrl,
+  extractClipboardLinkTitle,
+  isGenericLinkTitle,
   resolveLinkMetadata,
   type LinkMetadata,
 } from '../lib/linkMetadata'
@@ -57,6 +60,7 @@ interface EditorContextMenu {
   x: number
   y: number
   blockIndex: number
+  linkUrl: string | null
 }
 
 function openLinkFromEvent(event: MouseEvent | ReactMouseEvent): boolean {
@@ -88,6 +92,7 @@ export function MemoEditor({
   const composing = useRef(false)
   const spaceStreak = useRef(0)
   const recentLocalSnapshots = useRef<string[]>([])
+  const metadataRefreshAttempted = useRef<Set<string>>(new Set())
   const stickyIndexRef = useRef(stickyBlockIndex)
   const onStickyChangeRef = useRef(onStickyChange)
   const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null)
@@ -217,7 +222,8 @@ export function MemoEditor({
         if (url) {
           event.preventDefault()
           void (async () => {
-            const linkCard = await resolveLinkMetadata(url)
+            const clipboardTitle = extractClipboardLinkTitle(html, url)
+            const linkCard = await resolveLinkMetadata(url, clipboardTitle)
             editor
               ?.chain()
               .focus()
@@ -233,26 +239,6 @@ export function MemoEditor({
           return true
         }
         return false
-      },
-      handleDOMEvents: {
-        contextmenu: (view, event) => {
-          const mouseEvent = event as MouseEvent
-          const position = view.posAtCoords({ left: mouseEvent.clientX, top: mouseEvent.clientY })
-          if (!position) return false
-
-          const resolved = view.state.doc.resolve(position.pos)
-          const blockIndex = Math.min(
-            Math.max(resolved.index(0) + 1, 1),
-            view.state.doc.childCount,
-          )
-          mouseEvent.preventDefault()
-          setContextMenu({
-            x: Math.min(mouseEvent.clientX, window.innerWidth - 210),
-            y: Math.min(mouseEvent.clientY, window.innerHeight - 104),
-            blockIndex,
-          })
-          return true
-        },
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -391,28 +377,28 @@ export function MemoEditor({
           return
         }
 
-        const nodes: JSONContent[] = []
-        trimmed.split(/\r?\n/).forEach((line) => {
-          const lineUrl = extractSingleUrl(line)
-          if (lineUrl) {
-            // 여러 줄 혼합 시 URL은 호스트명으로 즉시 넣고, 본문은 동기 삽입을 유지합니다.
-            nodes.push(
-              ...linkCardWithTrailingParagraph({
-                href: lineUrl,
-                title: new URL(lineUrl).hostname,
-                domain: new URL(lineUrl).hostname,
-              }),
-            )
-          } else {
-            nodes.push({
-              type: 'paragraph',
-              content: line ? [{ type: 'text', text: line }] : undefined,
-            })
-          }
+        void Promise.all(
+          trimmed.split(/\r?\n/).map(async (line): Promise<JSONContent[]> => {
+            const lineUrl = extractSingleUrl(line)
+            if (lineUrl) {
+              const metadata = await resolveLinkMetadata(lineUrl)
+              return linkCardWithTrailingParagraph({
+                href: metadata.url,
+                title: metadata.title,
+                domain: metadata.domain,
+              })
+            }
+            return [
+              {
+                type: 'paragraph',
+                content: line ? [{ type: 'text', text: line }] : undefined,
+              },
+            ]
+          }),
+        ).then((groups) => {
+          const nodes = groups.flat()
+          if (nodes.length) editor.chain().focus('end').insertContent(nodes).run()
         })
-        if (nodes.length) {
-          editor.chain().focus('end').insertContent(nodes).run()
-        }
       },
       insertDate: () => {
         editor.chain().focus().insertContent(todayLabel() + ' ').run()
@@ -447,10 +433,70 @@ export function MemoEditor({
     onReady(api)
   }, [editor, onReady])
 
+  useEffect(() => {
+    if (!editor) return
+    const hrefs: string[] = []
+    editor.state.doc.descendants((node) => {
+      if (node.type.name !== 'linkCard') return
+      const meta: LinkMetadata = {
+        url: String(node.attrs.href ?? ''),
+        title: String(node.attrs.title ?? ''),
+        domain: String(node.attrs.domain ?? ''),
+      }
+      if (
+        meta.url &&
+        isGenericLinkTitle(meta) &&
+        !metadataRefreshAttempted.current.has(meta.url)
+      ) {
+        metadataRefreshAttempted.current.add(meta.url)
+        hrefs.push(meta.url)
+      }
+    })
+    if (!hrefs.length) return
+
+    void Promise.all(
+      hrefs.map(async (href) => [href, await resolveLinkMetadata(href)] as const),
+    ).then((results) => {
+      const byHref = new Map(results)
+      const transaction = editor.state.tr
+      editor.state.doc.descendants((node, position) => {
+        if (node.type.name !== 'linkCard') return
+        const href = String(node.attrs.href ?? '')
+        const metadata = byHref.get(href)
+        if (!metadata || metadata.title === node.attrs.title) return
+        transaction.setNodeMarkup(position, undefined, {
+          ...node.attrs,
+          title: metadata.title,
+          domain: metadata.domain,
+        })
+      })
+      if (transaction.docChanged) editor.view.dispatch(transaction)
+    })
+  }, [content, editor])
+
   const clearPinnedParagraph = () => {
     stickyIndexRef.current = 0
     setPinnedPreview(null)
     onStickyChangeRef.current(0)
+  }
+
+  const showContextMenu = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const linkUrl = externalUrlFromTarget(event.target)
+    const position = editor?.view.posAtCoords({ left: event.clientX, top: event.clientY })
+    if (!position && !linkUrl) return
+
+    const resolved = position ? editor?.state.doc.resolve(position.pos) : null
+    const blockIndex = resolved
+      ? Math.min(Math.max(resolved.index(0) + 1, 1), editor?.state.doc.childCount ?? 1)
+      : 1
+    event.preventDefault()
+    event.stopPropagation()
+    setContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 210),
+      y: Math.min(event.clientY, window.innerHeight - (linkUrl ? 150 : 104)),
+      blockIndex,
+      linkUrl,
+    })
   }
 
   return (
@@ -460,6 +506,7 @@ export function MemoEditor({
       onClickCapture={(event) => {
         openLinkFromEvent(event)
       }}
+      onContextMenuCapture={showContextMenu}
     >
       {pinnedPreview ? (
         <div
@@ -507,6 +554,23 @@ export function MemoEditor({
           }}
           onPointerDown={(event) => event.stopPropagation()}
         >
+          {contextMenu.linkUrl ? (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const linkUrl = contextMenu.linkUrl
+                setContextMenu(null)
+                if (!linkUrl) return
+                void writeText(linkUrl).catch((error: unknown) => {
+                  console.error('링크 복사 실패:', error)
+                  window.alert(`링크를 복사하지 못했습니다.\n${String(error)}`)
+                })
+              }}
+            >
+              링크 복사
+            </button>
+          ) : null}
           <button
             type="button"
             role="menuitem"
