@@ -15,6 +15,7 @@ import { TitleBar } from './components/TitleBar'
 import { exportMd, exportPdf, exportTxt } from './lib/export'
 import { extractSingleUrl, resolveLinkMetadata } from './lib/linkMetadata'
 import { contentFromPlainTextWithTables } from './lib/tablePaste'
+import { isRestorableWindowBounds } from './lib/windowBounds'
 import {
   EMPTY_DOC,
   PAPER_COLORS,
@@ -429,14 +430,16 @@ export default function App() {
         const pos = await win.outerPosition()
         const size = await win.outerSize()
         const factor = await win.scaleFactor()
+        const bounds = {
+          x: Math.round(pos.x / factor),
+          y: Math.round(pos.y / factor),
+          width: Math.round(size.width / factor),
+          height: Math.round(size.height / factor),
+        }
+        if (!isRestorableWindowBounds(bounds)) return
         const next: AppState = {
           ...stateRef.current,
-          window: {
-            x: Math.round(pos.x / factor),
-            y: Math.round(pos.y / factor),
-            width: Math.round(size.width / factor),
-            height: Math.round(size.height / factor),
-          },
+          window: bounds,
         }
         persist(next)
       } catch {

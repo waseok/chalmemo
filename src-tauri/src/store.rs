@@ -130,10 +130,38 @@ pub fn load_state() -> Result<AppState, String> {
     }
     let raw = fs::read_to_string(&path).map_err(|e| e.to_string())?;
     let mut state: AppState = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
-    if migrate_state(&mut state) {
+    let changed = migrate_state(&mut state) | normalize_window_state(&mut state.window);
+    if changed {
         save_state(&state)?;
     }
     Ok(state)
+}
+
+fn normalize_window_state(window: &mut WindowState) -> bool {
+    let defaults = WindowState::default();
+    let invalid_position = match (window.x, window.y) {
+        (Some(x), Some(y)) => x <= -10_000 || y <= -10_000,
+        (None, None) => false,
+        _ => true,
+    };
+    let invalid_size = !window.width.is_finite()
+        || !window.height.is_finite()
+        || window.width < 280.0
+        || window.height < 320.0;
+
+    if !invalid_position && !invalid_size {
+        return false;
+    }
+
+    if invalid_position {
+        window.x = defaults.x;
+        window.y = defaults.y;
+    }
+    if invalid_size {
+        window.width = defaults.width;
+        window.height = defaults.height;
+    }
+    true
 }
 
 fn migrate_state(state: &mut AppState) -> bool {
@@ -215,5 +243,34 @@ mod tests {
         assert_eq!(old.version, 4);
         assert!(!old.settings.global_capture);
         assert!(!old.settings.autostart);
+    }
+
+    #[test]
+    fn minimized_windows_bounds_are_reset() {
+        let mut window = WindowState {
+            x: Some(-32_000),
+            y: Some(-32_000),
+            width: 208.0,
+            height: 55.0,
+        };
+
+        assert!(normalize_window_state(&mut window));
+        assert_eq!(window.x, None);
+        assert_eq!(window.y, None);
+        assert_eq!(window.width, 380.0);
+        assert_eq!(window.height, 520.0);
+    }
+
+    #[test]
+    fn secondary_monitor_bounds_are_kept() {
+        let mut window = WindowState {
+            x: Some(-1_920),
+            y: Some(0),
+            width: 380.0,
+            height: 520.0,
+        };
+
+        assert!(!normalize_window_state(&mut window));
+        assert_eq!(window.x, Some(-1_920));
     }
 }
